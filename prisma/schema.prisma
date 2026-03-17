@@ -1,0 +1,1797 @@
+// U-Exam — Prisma Schema (Phase 1-22 + Subject)
+// Phase 1: Tenant, User, UserTenant, Role, Permission, RolePermission,
+//          Notification, NotificationTemplate, NotificationPreference
+// Phase 2: Category, Tag, Subject, Question, QuestionTag, QuestionMedia, QuestionHistory
+// Phase 3: Exam, ExamSection, ExamSectionQuestion, ExamBlueprint, ExamSchedule, ExamAccess
+// Phase 4: ExamSession, ExamAnswer, ExamEvent
+// Phase 5: Grade, GradeAnswer, Rubric, RubricCriteria, Appeal
+// Phase 10-12: TestCenter, Building, Room, Seat, Equipment, CenterStaff, StaffShift,
+//             Registration, Voucher
+// Phase 13: Payment, Invoice, Refund, Coupon, CouponUsage
+// Phase 14: ExamDayLog (check-in + incidents)
+// Phase 16: CenterApproval
+// Phase 18: CandidateProfile
+// Phase 19: EwalletConnection, EwalletTransaction
+// Phase 20: CertificateTemplate, Certificate, DigitalBadge
+// Phase 21: ProctoringSession, ProctoringEvent, Incident
+// Phase 22: ApiKey, Webhook, WebhookLog
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 1. Tenant (Multi-tenant root)
+// ============================================================
+model Tenant {
+  id       String  @id @default(uuid()) @db.Uuid
+  name     String  @db.VarChar(255)
+  slug     String  @unique @db.VarChar(100)
+  logoUrl  String? @map("logo_url") @db.VarChar(500)
+  settings Json?   @db.JsonB
+  plan     String  @default("free") @db.VarChar(50)
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  userTenants           UserTenant[]
+  roles                 Role[]
+  notifications         Notification[]
+  notificationTemplates NotificationTemplate[]
+  categories            Category[]
+  tags                  Tag[]
+  questions             Question[]
+  exams                 Exam[]
+  examSchedules         ExamSchedule[]
+  grades                Grade[]
+  rubrics               Rubric[]
+  graderAssignments     GraderAssignment[]
+  appeals               Appeal[]
+  testCenters           TestCenter[]
+  registrations         Registration[]
+  vouchers              Voucher[]
+  payments              Payment[]
+  invoices              Invoice[]
+  refunds               Refund[]
+  coupons               Coupon[]
+  examDayLogs           ExamDayLog[]
+  centerApprovals       CenterApproval[]
+  ewalletConnections      EwalletConnection[]
+  certificateTemplates    CertificateTemplate[]
+  certificates            Certificate[]
+  subjects                Subject[]
+  questionGroups          QuestionGroup[]
+  apiKeys                 ApiKey[]
+  webhooks                Webhook[]
+  mediaFiles              MediaFile[]
+
+  @@map("tenants")
+}
+
+// ============================================================
+// 2. User (Global — not tenant-scoped)
+// ============================================================
+model User {
+  id           String  @id @default(uuid()) @db.Uuid
+  email        String  @unique @db.VarChar(255)
+  passwordHash String? @map("password_hash") @db.VarChar(255)
+  name         String  @db.VarChar(255)
+  imageUrl     String? @map("image_url") @db.VarChar(500)
+  phone        String? @db.VarChar(20)
+  provider     String  @default("credentials") @db.VarChar(20)
+  providerId   String? @map("provider_id") @db.VarChar(255)
+
+  emailVerified Boolean   @default(false) @map("email_verified")
+  isActive      Boolean   @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz()
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  userTenants             UserTenant[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  questionsCreated        Question[]        @relation("QuestionCreatedBy")
+  questionHistories       QuestionHistory[] @relation("QuestionHistoryChangedBy")
+  examsCreated            Exam[]            @relation("ExamCreatedBy")
+  examSessions            ExamSession[]
+  gradesGraded            GradeAnswer[]     @relation("GradeAnswerGradedBy")
+  gradesModerated         GradeAnswer[]     @relation("GradeAnswerModeratedBy")
+  graderAssignments       GraderAssignment[] @relation("GraderAssignments")
+  appealsCreated          Appeal[]          @relation("AppealCreatedBy")
+  appealsResolved         Appeal[]          @relation("AppealResolvedBy")
+  testCentersManaged      TestCenter[]      @relation("TestCenterManager")
+  centerStaff             CenterStaff[]
+  staffShifts             StaffShift[]     @relation("StaffShiftUser")
+  registrations           Registration[]
+  vouchers                Voucher[]
+  payments                Payment[]
+  refundsProcessed        Refund[]      @relation("RefundProcessedBy")
+  examDayLogs             ExamDayLog[]  @relation("ExamDayLogCreatedBy")
+  centerApprovalsReviewed CenterApproval[] @relation("CenterApprovalReviewedBy")
+  candidateProfile        CandidateProfile?
+  emailVerifications      EmailVerification[]
+  certificates            Certificate[]
+  incidentsCreated        Incident[]  @relation("IncidentCreatedBy")
+  uploadedMedia           MediaFile[] @relation("MediaUploadedBy")
+
+  @@map("users")
+}
+
+// ============================================================
+// 3. UserTenant (Junction: User ↔ Tenant, with Role)
+// ============================================================
+model UserTenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  isDefault Boolean  @default(false) @map("is_default")
+  isActive  Boolean  @default(true) @map("is_active")
+  joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz()
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("user_tenants")
+}
+
+// ============================================================
+// 4. Role (Tenant-scoped)
+// ============================================================
+model Role {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  name        String  @db.VarChar(100)
+  description String? @db.VarChar(500)
+  isSystem    Boolean @default(false) @map("is_system")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rolePermissions RolePermission[]
+  userTenants     UserTenant[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+// ============================================================
+// 5. Permission (Global — not tenant-scoped)
+// ============================================================
+model Permission {
+  id          String  @id @default(uuid()) @db.Uuid
+  code        String  @unique @db.VarChar(100)
+  module      String  @db.VarChar(50)
+  action      String  @db.VarChar(50)
+  description String? @db.VarChar(255)
+
+  // Relations
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+// ============================================================
+// 6. RolePermission (Junction: Role ↔ Permission)
+// ============================================================
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  // Relations
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ============================================================
+// 7. Notification (Tenant-scoped)
+// ============================================================
+model Notification {
+  id       String    @id @default(uuid()) @db.Uuid
+  tenantId String    @map("tenant_id") @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  type     String    @db.VarChar(50)
+  title    String    @db.VarChar(255)
+  message  String    @db.Text
+  isRead   Boolean   @default(false) @map("is_read")
+  readAt   DateTime? @map("read_at") @db.Timestamptz()
+  link     String?   @db.VarChar(500)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@map("notifications")
+}
+
+// ============================================================
+// 8. NotificationTemplate (Tenant-scoped)
+// ============================================================
+model NotificationTemplate {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @map("tenant_id") @db.Uuid
+  type      String  @db.VarChar(50)
+  subject   String  @db.VarChar(255)
+  body      String  @db.Text
+  variables Json?   @db.JsonB
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, type])
+  @@map("notification_templates")
+}
+
+// ============================================================
+// 9. NotificationPreference (User-scoped)
+// ============================================================
+model NotificationPreference {
+  id     String  @id @default(uuid()) @db.Uuid
+  userId String  @map("user_id") @db.Uuid
+  type   String  @db.VarChar(50)
+  email  Boolean @default(true)
+  push   Boolean @default(true)
+  inApp  Boolean @default(true) @map("in_app")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
+}
+
+// ============================================================
+// Phase 2: Question Bank
+// ============================================================
+
+// 10. Category (Tenant-scoped, flat list)
+// ============================================================
+model Category {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  name        String  @db.VarChar(255)
+  description String? @db.VarChar(500)
+  sortOrder   Int     @default(0) @map("sort_order")
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subjects       Subject[]
+  examBlueprints ExamBlueprint[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("categories")
+}
+
+// ============================================================
+// 11. Tag (Tenant-scoped)
+// ============================================================
+model Tag {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  name     String  @db.VarChar(100)
+  color    String? @db.VarChar(20)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  questionTags QuestionTag[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("tags")
+}
+
+// ============================================================
+// 12. Subject (วิชา — Tenant-scoped, belongs to Category)
+// Hierarchy: Category (คณะ) → SubCategory (หลักสูตร) → Subject (วิชา) → Question
+// ============================================================
+model Subject {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  categoryId  String? @map("category_id") @db.Uuid
+  code        String  @db.VarChar(50)
+  name        String  @db.VarChar(255)
+  description String? @db.VarChar(500)
+  color       String? @db.VarChar(20)
+  sortOrder   Int     @default(0) @map("sort_order")
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  questions      Question[]
+  questionGroups QuestionGroup[]
+  examBlueprints ExamBlueprint[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([categoryId])
+  @@map("subjects")
+}
+
+// ============================================================
+// 12b. QuestionGroup (กลุ่มข้อสอบ — scoped to Subject)
+// ============================================================
+model QuestionGroup {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  subjectId   String  @map("subject_id") @db.Uuid
+  name        String  @db.VarChar(255)
+  description String? @db.VarChar(500)
+  color       String? @db.VarChar(20)
+  sortOrder   Int     @default(0) @map("sort_order")
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subject        Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  questions      Question[]
+  examBlueprints ExamBlueprint[]
+
+  @@unique([subjectId, name])
+  @@index([tenantId])
+  @@index([subjectId])
+  @@map("question_groups")
+}
+
+// ============================================================
+// 13. Question (Tenant-scoped)
+// ============================================================
+model Question {
+  id            String @id @default(uuid()) @db.Uuid
+  tenantId      String @map("tenant_id") @db.Uuid
+  subjectId       String? @map("subject_id") @db.Uuid
+  questionGroupId String? @map("question_group_id") @db.Uuid
+  createdById     String  @map("created_by_id") @db.Uuid
+
+  type          String @db.VarChar(30)  // MULTIPLE_CHOICE, TRUE_FALSE, SHORT_ANSWER, ESSAY, MATCHING, ORDERING, FILL_IN_BLANK, IMAGE_BASED
+  difficulty    String @default("MEDIUM") @db.VarChar(20) // EASY, MEDIUM, HARD
+  content       Json   @db.JsonB        // Rich text content (Tiptap JSON)
+  searchText    String? @map("search_text") @db.Text // Plain text extracted from content for search
+  options       Json?  @db.JsonB        // Answer options (array)
+  correctAnswer Json?  @map("correct_answer") @db.JsonB // Correct answer(s)
+  explanation   String? @db.Text        // Answer explanation
+  points        Float  @default(1)
+  status        String @default("DRAFT") @db.VarChar(20) // DRAFT, ACTIVE, ARCHIVED
+  metadata      Json?  @db.JsonB        // Additional metadata
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Exam-only question support
+  isExamOnly Boolean @default(false) @map("is_exam_only")
+  examId     String? @map("exam_id") @db.Uuid
+
+  // Relations
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subject       Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  questionGroup QuestionGroup?  @relation(fields: [questionGroupId], references: [id], onDelete: SetNull)
+  createdBy     User            @relation("QuestionCreatedBy", fields: [createdById], references: [id])
+  exam          Exam?           @relation("ExamOnlyQuestions", fields: [examId], references: [id], onDelete: SetNull)
+  questionTags         QuestionTag[]
+  media                QuestionMedia[]
+  histories            QuestionHistory[]
+  examSectionQuestions ExamSectionQuestion[]
+  examAnswers          ExamAnswer[]
+
+  @@index([tenantId])
+  @@index([subjectId])
+  @@index([tenantId, subjectId])
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([tenantId, difficulty])
+  @@index([tenantId, questionGroupId])
+  @@index([tenantId, isExamOnly])
+  @@map("questions")
+}
+
+// ============================================================
+// 13. QuestionTag (Junction: Question ↔ Tag)
+// ============================================================
+model QuestionTag {
+  questionId String @map("question_id") @db.Uuid
+  tagId      String @map("tag_id") @db.Uuid
+
+  // Relations
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, tagId])
+  @@map("question_tags")
+}
+
+// ============================================================
+// 14. MediaFile (Reusable media assets)
+// ============================================================
+model MediaFile {
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @map("tenant_id") @db.Uuid
+  url          String  @db.VarChar(500)
+  thumbnailUrl String? @map("thumbnail_url") @db.VarChar(500)
+  type         String  @db.VarChar(20)    // IMAGE, AUDIO, VIDEO
+  filename     String  @db.VarChar(255)
+  fileSize     Int     @map("file_size")
+  mimeType     String  @map("mime_type") @db.VarChar(100)
+  width        Int?
+  height       Int?
+  duration     Float?                     // seconds (audio)
+  provider     String? @db.VarChar(20)    // youtube, vimeo
+  externalId   String? @map("external_id") @db.VarChar(100)
+  uploadedById String  @map("uploaded_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  uploadedBy User   @relation("MediaUploadedBy", fields: [uploadedById], references: [id])
+  questions  QuestionMedia[]
+
+  @@index([tenantId])
+  @@index([type])
+  @@map("media_files")
+}
+
+// ============================================================
+// 14b. QuestionMedia (Junction: Question ↔ MediaFile)
+// ============================================================
+model QuestionMedia {
+  questionId  String  @map("question_id") @db.Uuid
+  mediaFileId String  @map("media_file_id") @db.Uuid
+  caption     String? @db.VarChar(255)
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  question  Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  mediaFile MediaFile @relation(fields: [mediaFileId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, mediaFileId])
+  @@index([questionId])
+  @@map("question_media")
+}
+
+// ============================================================
+// 15. QuestionHistory (Audit trail)
+// ============================================================
+model QuestionHistory {
+  id           String @id @default(uuid()) @db.Uuid
+  questionId   String @map("question_id") @db.Uuid
+  changedById  String @map("changed_by_id") @db.Uuid
+  changeType   String @db.VarChar(20) // CREATED, UPDATED, ARCHIVED, RESTORED
+  previousData Json?  @map("previous_data") @db.JsonB
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  question  Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  changedBy User     @relation("QuestionHistoryChangedBy", fields: [changedById], references: [id])
+
+  @@index([questionId])
+  @@map("question_histories")
+}
+
+// ============================================================
+// Phase 3: Exam Builder + Scheduling
+// ============================================================
+
+// 16. Exam (Tenant-scoped)
+// ============================================================
+model Exam {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  createdById String  @map("created_by_id") @db.Uuid
+
+  title        String  @db.VarChar(500)
+  description  String? @db.Text
+  status       String  @default("DRAFT") @db.VarChar(20) // DRAFT, PUBLISHED, ACTIVE, COMPLETED, ARCHIVED
+  mode         String  @default("PUBLIC") @db.VarChar(20) // PUBLIC, CORPORATE
+  totalPoints  Float   @default(0) @map("total_points")
+  passingScore Float   @default(50) @map("passing_score") // percentage
+  duration     Int     @default(60) // minutes
+  appealDeadlineDays Int? @map("appeal_deadline_days") // null = no deadline
+  settings     Json?   @db.JsonB // shuffle, showResult, attempts, etc.
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy  User           @relation("ExamCreatedBy", fields: [createdById], references: [id])
+  sections   ExamSection[]
+  blueprints ExamBlueprint[]
+  schedules  ExamSchedule[]
+  accesses   ExamAccess[]
+  rubrics    Rubric[]
+  graderAssignments GraderAssignment[]
+  examOnlyQuestions Question[] @relation("ExamOnlyQuestions")
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("exams")
+}
+
+// ============================================================
+// 17. ExamSection (Exam sections/parts)
+// ============================================================
+model ExamSection {
+  id          String  @id @default(uuid()) @db.Uuid
+  examId      String  @map("exam_id") @db.Uuid
+  title       String  @db.VarChar(255)
+  description String? @db.VarChar(500)
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  exam               Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questions          ExamSectionQuestion[]
+  blueprints         ExamBlueprint[]
+  graderAssignments  GraderAssignment[]
+
+  @@index([examId])
+  @@map("exam_sections")
+}
+
+// ============================================================
+// 18. ExamSectionQuestion (Junction: ExamSection ↔ Question)
+// ============================================================
+model ExamSectionQuestion {
+  id         String @id @default(uuid()) @db.Uuid
+  sectionId  String @map("section_id") @db.Uuid
+  questionId String @map("question_id") @db.Uuid
+  sortOrder  Int    @default(0) @map("sort_order")
+  points     Float? // override question default points
+
+  // Relations
+  section  ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, questionId])
+  @@index([sectionId])
+  @@map("exam_section_questions")
+}
+
+// ============================================================
+// 19. ExamBlueprint (Auto-generate questions by criteria)
+// ============================================================
+model ExamBlueprint {
+  id              String  @id @default(uuid()) @db.Uuid
+  examId          String  @map("exam_id") @db.Uuid
+  sectionId       String? @map("section_id") @db.Uuid
+  categoryId      String? @map("category_id") @db.Uuid
+  subjectId       String? @map("subject_id") @db.Uuid
+  questionGroupId String? @map("question_group_id") @db.Uuid
+  mode            String  @default("BLUEPRINT") @db.VarChar(20) // BLUEPRINT, SIMPLE_RANDOM
+  difficulty      String? @db.VarChar(20) // EASY, MEDIUM, HARD (null = any for SIMPLE_RANDOM)
+  count           Int     @default(1) // number of questions to pick
+  points          Float   @default(1) // points per question
+
+  // Relations
+  exam          Exam           @relation(fields: [examId], references: [id], onDelete: Cascade)
+  section       ExamSection?   @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  category      Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subject       Subject?       @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  questionGroup QuestionGroup? @relation(fields: [questionGroupId], references: [id], onDelete: SetNull)
+
+  @@index([examId])
+  @@index([sectionId])
+  @@map("exam_blueprints")
+}
+
+// ============================================================
+// 20. ExamSchedule (When an exam is available)
+// ============================================================
+model ExamSchedule {
+  id                   String   @id @default(uuid()) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  examId               String   @map("exam_id") @db.Uuid
+  startDate            DateTime @map("start_date") @db.Timestamptz()
+  endDate              DateTime @map("end_date") @db.Timestamptz()
+  registrationOpenDate DateTime? @map("registration_open_date") @db.Timestamptz()
+  registrationDeadline DateTime? @map("registration_deadline") @db.Timestamptz()
+  maxCandidates        Int?     @map("max_candidates")
+  testCenterId         String?  @map("test_center_id") @db.Uuid
+  roomId               String?  @map("room_id") @db.Uuid
+  status               String   @default("SCHEDULED") @db.VarChar(20) // SCHEDULED, ACTIVE, COMPLETED, CANCELLED
+  location             String?  @db.VarChar(500) // optional free-text location (fallback when no testCenter/room)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  exam         Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  testCenter   TestCenter?   @relation(fields: [testCenterId], references: [id], onDelete: SetNull)
+  room         Room?         @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  examSessions  ExamSession[]
+  staffShifts   StaffShift[]
+  registrations Registration[]
+  examDayLogs   ExamDayLog[]
+
+  @@index([tenantId])
+  @@index([examId])
+  @@index([testCenterId])
+  @@index([roomId])
+  @@index([tenantId, status])
+  @@map("exam_schedules")
+}
+
+// ============================================================
+// 21. ExamAccess (Access control for exams)
+// ============================================================
+model ExamAccess {
+  id            String  @id @default(uuid()) @db.Uuid
+  examId        String  @map("exam_id") @db.Uuid
+  type          String  @db.VarChar(20) // PUBLIC, PRIVATE, CODE
+  accessCode    String? @map("access_code") @db.VarChar(50)
+  allowedEmails Json?   @map("allowed_emails") @db.JsonB // string[] for PRIVATE type
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@index([examId])
+  @@index([accessCode])
+  @@map("exam_accesses")
+}
+
+// ============================================================
+// Phase 4: Exam Taking + Anti-cheat
+// ============================================================
+
+// 22. ExamSession (Candidate's exam attempt)
+// ============================================================
+model ExamSession {
+  id              String    @id @default(uuid()) @db.Uuid
+  examScheduleId  String    @map("exam_schedule_id") @db.Uuid
+  candidateId     String    @map("candidate_id") @db.Uuid
+
+  status          String    @default("NOT_STARTED") @db.VarChar(20) // NOT_STARTED, IN_PROGRESS, SUBMITTED, TIMED_OUT
+  startedAt       DateTime? @map("started_at") @db.Timestamptz()
+  submittedAt     DateTime? @map("submitted_at") @db.Timestamptz()
+  timeRemaining   Int?      @map("time_remaining") // seconds remaining when last saved
+  ipAddress       String?   @map("ip_address") @db.VarChar(50)
+  userAgent       String?   @map("user_agent") @db.VarChar(500)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  examSchedule     ExamSchedule      @relation(fields: [examScheduleId], references: [id], onDelete: Cascade)
+  candidate        User              @relation(fields: [candidateId], references: [id])
+  answers          ExamAnswer[]
+  events           ExamEvent[]
+  grade            Grade?
+  appeals          Appeal[]
+  proctoringSession ProctoringSession?
+
+  @@unique([examScheduleId, candidateId])
+  @@index([examScheduleId])
+  @@index([candidateId])
+  @@index([status])
+  @@map("exam_sessions")
+}
+
+// ============================================================
+// 23. ExamAnswer (Candidate's answer to a question)
+// ============================================================
+model ExamAnswer {
+  id         String    @id @default(uuid()) @db.Uuid
+  sessionId  String    @map("session_id") @db.Uuid
+  questionId String    @map("question_id") @db.Uuid
+
+  answer     Json?     @db.JsonB        // Candidate's answer (format depends on question type)
+  isFlagged  Boolean   @default(false) @map("is_flagged")
+  answeredAt DateTime? @map("answered_at") @db.Timestamptz()
+  timeSpent  Int?      @map("time_spent") // seconds spent on this question
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  session      ExamSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question     Question     @relation(fields: [questionId], references: [id])
+  gradeAnswer  GradeAnswer?
+
+  @@unique([sessionId, questionId])
+  @@index([sessionId])
+  @@map("exam_answers")
+}
+
+// ============================================================
+// 24. ExamEvent (Anti-cheat event log)
+// ============================================================
+model ExamEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String   @map("session_id") @db.Uuid
+
+  type      String   @db.VarChar(30) // BLUR, FOCUS, COPY, PASTE, SCREENSHOT, TAB_SWITCH, FULLSCREEN_EXIT
+  metadata  Json?    @db.JsonB       // Additional event data
+  timestamp DateTime @default(now()) @db.Timestamptz()
+
+  // Relations
+  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([sessionId, type])
+  @@map("exam_events")
+}
+
+// ============================================================
+// Phase 5: Grading (Auto + Manual)
+// ============================================================
+
+// 25. Grade (Final grade per exam session)
+// ============================================================
+model Grade {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  sessionId   String    @unique @map("session_id") @db.Uuid
+
+  totalScore  Float     @default(0) @map("total_score")
+  maxScore    Float     @default(0) @map("max_score")
+  percentage  Float     @default(0)
+  isPassed    Boolean   @default(false) @map("is_passed")
+  status      String    @default("DRAFT") @db.VarChar(20) // DRAFT, GRADING, COMPLETED, PUBLISHED
+  gradedAt    DateTime? @map("graded_at") @db.Timestamptz()
+  publishedAt DateTime? @map("published_at") @db.Timestamptz()
+  adjustments Json?     @db.JsonB // { reason, adjustedBy, adjustedAt, details }
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session      ExamSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  gradeAnswers GradeAnswer[]
+  certificates Certificate[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("grades")
+}
+
+// ============================================================
+// 26. GradeAnswer (Score per question in a grade)
+// ============================================================
+model GradeAnswer {
+  id         String  @id @default(uuid()) @db.Uuid
+  gradeId    String  @map("grade_id") @db.Uuid
+  answerId   String  @unique @map("answer_id") @db.Uuid
+  gradedById String? @map("graded_by_id") @db.Uuid
+
+  score      Float   @default(0)
+  maxScore   Float   @map("max_score")
+  isAutoGraded Boolean @default(false) @map("is_auto_graded")
+  isCorrect  Boolean? @map("is_correct")
+  feedback   String?  @db.Text
+  rubricScores Json?  @map("rubric_scores") @db.JsonB // [{ criteriaId, score, maxScore }]
+
+  // Double grading fields
+  gradingRound   Int     @default(1) @map("grading_round") // 1 = first, 2 = second
+  moderatedScore Float?  @map("moderated_score") // final score after moderation
+  moderatedById  String? @map("moderated_by_id") @db.Uuid
+  moderatedAt    DateTime? @map("moderated_at") @db.Timestamptz()
+
+  // Time tracking fields
+  gradingStartedAt  DateTime? @map("grading_started_at") @db.Timestamptz()
+  gradingDurationMs Int?      @map("grading_duration_ms") // milliseconds spent grading
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  grade       Grade      @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  answer      ExamAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  gradedBy    User?      @relation("GradeAnswerGradedBy", fields: [gradedById], references: [id])
+  moderatedBy User?      @relation("GradeAnswerModeratedBy", fields: [moderatedById], references: [id])
+
+  @@index([gradeId])
+  @@map("grade_answers")
+}
+
+// ============================================================
+// 27. Rubric (Grading rubric template for an exam)
+// ============================================================
+model Rubric {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  examId      String? @map("exam_id") @db.Uuid
+
+  title       String  @db.VarChar(255)
+  description String? @db.Text
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  exam     Exam?            @relation(fields: [examId], references: [id], onDelete: SetNull)
+  criteria RubricCriteria[]
+
+  @@index([tenantId])
+  @@index([examId])
+  @@map("rubrics")
+}
+
+// ============================================================
+// 28. RubricCriteria (Individual rubric item)
+// ============================================================
+model RubricCriteria {
+  id          String  @id @default(uuid()) @db.Uuid
+  rubricId    String  @map("rubric_id") @db.Uuid
+
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+  maxScore    Float   @map("max_score")
+  sortOrder   Int     @default(0) @map("sort_order")
+  levels      Json?   @db.JsonB // array of {label, minScore, maxScore, description}
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  rubric Rubric @relation(fields: [rubricId], references: [id], onDelete: Cascade)
+
+  @@index([rubricId])
+  @@map("rubric_criteria")
+}
+
+// ============================================================
+// 28b. GraderAssignment (Assign graders to exams)
+// ============================================================
+model GraderAssignment {
+  id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
+  examId    String @map("exam_id") @db.Uuid
+  userId    String @map("user_id") @db.Uuid
+
+  scope     String @default("ALL") @db.VarChar(20) // ALL, SECTION
+  sectionId String? @map("section_id") @db.Uuid
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  exam    Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user    User        @relation("GraderAssignments", fields: [userId], references: [id], onDelete: Cascade)
+  section ExamSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@unique([examId, userId, sectionId])
+  @@index([tenantId])
+  @@index([examId])
+  @@index([userId])
+  @@map("grader_assignments")
+}
+
+// ============================================================
+// 29. Appeal (Grade appeal from candidate)
+// ============================================================
+model Appeal {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  sessionId   String    @map("session_id") @db.Uuid
+  candidateId String    @map("candidate_id") @db.Uuid
+  resolvedById String?  @map("resolved_by_id") @db.Uuid
+
+  questionId  String?   @map("question_id") @db.Uuid // null = appeal entire exam
+  originalScore Float   @map("original_score")
+  newScore    Float?    @map("new_score")
+  reason      String    @db.Text
+  response    String?   @db.Text // admin/grader response
+  status      String    @default("PENDING") @db.VarChar(20) // PENDING, APPROVED, REJECTED
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session    ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  candidate  User        @relation("AppealCreatedBy", fields: [candidateId], references: [id])
+  resolvedBy User?       @relation("AppealResolvedBy", fields: [resolvedById], references: [id])
+
+  @@index([tenantId])
+  @@index([sessionId])
+  @@index([tenantId, status])
+  @@map("appeals")
+}
+
+// ============================================================
+// Phase 7: Test Center — Profile + Building + Room
+// ============================================================
+
+// 30. TestCenter (Tenant-scoped)
+// ============================================================
+model TestCenter {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  managerId   String? @map("manager_id") @db.Uuid
+
+  name            String  @db.VarChar(255)
+  code            String? @db.VarChar(50) // Short code (e.g. "SIAM", "CNX")
+  address         String  @db.VarChar(500)
+  district        String  @db.VarChar(100)
+  province        String  @db.VarChar(100)
+  postalCode      String  @map("postal_code") @db.VarChar(10)
+  phone           String? @db.VarChar(20)
+  email           String? @db.VarChar(255)
+  latitude        Float?
+  longitude       Float?
+  facilities      Json?   @db.JsonB // string[] of facility names
+  operatingHours  String? @map("operating_hours") @db.VarChar(255)
+  rating          Float   @default(0)
+  status          String  @default("ACTIVE") @db.VarChar(20) // ACTIVE, MAINTENANCE, INACTIVE
+  description     String? @db.Text
+  imageUrl        String? @map("image_url") @db.VarChar(500)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  manager   User?      @relation("TestCenterManager", fields: [managerId], references: [id])
+  buildings     Building[]
+  rooms         Room[]
+  equipment     Equipment[]
+  centerStaff   CenterStaff[]
+  registrations  Registration[]
+  examDayLogs    ExamDayLog[]
+  approvals      CenterApproval[]
+  examSchedules  ExamSchedule[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("test_centers")
+}
+
+// 31. Building (Belongs to TestCenter)
+// ============================================================
+model Building {
+  id           String  @id @default(uuid()) @db.Uuid
+  testCenterId String  @map("test_center_id") @db.Uuid
+
+  name         String  @db.VarChar(255)
+  code         String? @db.VarChar(50) // Short code (e.g. "A", "B")
+  floors       Int     @default(1) // Total number of floors
+  address      String? @db.VarChar(500) // Override center address if different
+  description  String? @db.Text
+  status       String  @default("ACTIVE") @db.VarChar(20) // ACTIVE, MAINTENANCE, INACTIVE
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  testCenter TestCenter @relation(fields: [testCenterId], references: [id], onDelete: Cascade)
+  rooms      Room[]
+
+  @@index([testCenterId])
+  @@map("buildings")
+}
+
+// 32. Room (Belongs to TestCenter, optionally to Building)
+// ============================================================
+model Room {
+  id           String  @id @default(uuid()) @db.Uuid
+  testCenterId String  @map("test_center_id") @db.Uuid
+  buildingId   String? @map("building_id") @db.Uuid
+
+  name         String  @db.VarChar(255)
+  code         String? @db.VarChar(50) // Short code (e.g. "A1", "VIP")
+  floor        Int     @default(1)
+  capacity     Int     @default(0)
+  status       String  @default("AVAILABLE") @db.VarChar(20) // AVAILABLE, IN_USE, MAINTENANCE, INACTIVE
+  hasProjector Boolean @default(false) @map("has_projector")
+  hasAC        Boolean @default(true) @map("has_ac")
+  hasWebcam    Boolean @default(false) @map("has_webcam")
+  description  String? @db.Text
+  notes        String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  testCenter TestCenter @relation(fields: [testCenterId], references: [id], onDelete: Cascade)
+  building   Building?  @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+
+  // Phase 8 relations
+  seats          Seat[]
+  examSchedules  ExamSchedule[]
+
+  @@index([testCenterId])
+  @@index([buildingId])
+  @@index([testCenterId, status])
+  @@map("rooms")
+}
+
+// ============================================================
+// Phase 8: Test Center — Seat Layout + Equipment
+// ============================================================
+
+// 33. Seat (Belongs to Room)
+// ============================================================
+model Seat {
+  id       String @id @default(uuid()) @db.Uuid
+  roomId   String @map("room_id") @db.Uuid
+
+  seatNumber String @map("seat_number") @db.VarChar(20) // e.g. "A-1", "B-3"
+  row        Int
+  column     Int    @map("col")
+  status     String @default("AVAILABLE") @db.VarChar(20) // AVAILABLE, OCCUPIED, DISABLED, RESERVED
+  type       String @default("REGULAR") @db.VarChar(20) // REGULAR, WHEELCHAIR, SPECIAL
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  room          Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  registrations Registration[]
+
+  @@unique([roomId, seatNumber])
+  @@index([roomId])
+  @@index([roomId, status])
+  @@map("seats")
+}
+
+// 34. Equipment (Belongs to TestCenter, optionally to Room)
+// ============================================================
+model Equipment {
+  id           String  @id @default(uuid()) @db.Uuid
+  testCenterId String  @map("test_center_id") @db.Uuid
+  roomId       String? @map("room_id") @db.Uuid
+
+  name         String @db.VarChar(255)
+  type         String @db.VarChar(50) // COMPUTER, PROJECTOR, WEBCAM, PRINTER, NETWORK, UPS, MONITOR, OTHER
+  serialNumber String @map("serial_number") @db.VarChar(100)
+  status       String @default("WORKING") @db.VarChar(20) // WORKING, MAINTENANCE, BROKEN
+  lastChecked  DateTime? @map("last_checked") @db.Timestamptz()
+  description  String? @db.Text
+  notes        String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  testCenter TestCenter @relation(fields: [testCenterId], references: [id], onDelete: Cascade)
+
+  @@index([testCenterId])
+  @@index([testCenterId, status])
+  @@map("equipment")
+}
+
+// ============================================================
+// Phase 9: Test Center — Staff Management
+// ============================================================
+
+// 35. CenterStaff (Staff assigned to a TestCenter)
+// ============================================================
+model CenterStaff {
+  id           String  @id @default(uuid()) @db.Uuid
+  testCenterId String  @map("test_center_id") @db.Uuid
+  userId       String  @map("user_id") @db.Uuid
+
+  position       String  @db.VarChar(50) // PROCTOR, IT_SUPPORT, RECEPTION, ADMIN, COORDINATOR
+  status         String  @default("ACTIVE") @db.VarChar(20) // ACTIVE, ON_LEAVE, INACTIVE
+  phone          String? @db.VarChar(20)
+  certifications Json?   @db.JsonB // string[] of certification names
+  notes          String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  testCenter TestCenter @relation(fields: [testCenterId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shifts     StaffShift[]
+
+  @@unique([testCenterId, userId])
+  @@index([testCenterId])
+  @@index([userId])
+  @@index([testCenterId, status])
+  @@map("center_staff")
+}
+
+// 36. StaffShift (Shift assignments for staff)
+// ============================================================
+model StaffShift {
+  id             String   @id @default(uuid()) @db.Uuid
+  centerStaffId  String   @map("center_staff_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  examScheduleId String?  @map("exam_schedule_id") @db.Uuid
+
+  date       DateTime @db.Date
+  startTime  String   @map("start_time") @db.VarChar(5) // HH:mm format
+  endTime    String   @map("end_time") @db.VarChar(5)   // HH:mm format
+  role       String   @db.VarChar(50) // PROCTOR, SUPPORT, ADMIN, COORDINATOR
+  status     String   @default("SCHEDULED") @db.VarChar(20) // SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
+  notes      String?  @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  centerStaff  CenterStaff   @relation(fields: [centerStaffId], references: [id], onDelete: Cascade)
+  user         User          @relation("StaffShiftUser", fields: [userId], references: [id])
+  examSchedule ExamSchedule? @relation(fields: [examScheduleId], references: [id], onDelete: SetNull)
+
+  @@index([centerStaffId])
+  @@index([userId])
+  @@index([examScheduleId])
+  @@index([date])
+  @@map("staff_shifts")
+}
+
+// ============================================================
+// Phase 10: Exam Catalog + Registration
+// ============================================================
+
+// 37. Registration (Candidate registration for an exam schedule)
+// ============================================================
+model Registration {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenantId       String  @map("tenant_id") @db.Uuid
+  candidateId    String  @map("candidate_id") @db.Uuid
+  examScheduleId String  @map("exam_schedule_id") @db.Uuid
+  testCenterId   String? @map("test_center_id") @db.Uuid
+  seatId         String? @map("seat_id") @db.Uuid
+
+  status            String   @default("PENDING") @db.VarChar(20)  // PENDING, CONFIRMED, CANCELLED, WAITING_LIST
+  paymentStatus     String   @default("PENDING") @map("payment_status") @db.VarChar(20) // PENDING, PAID, REFUNDED, WAIVED
+  amount            Float    @default(0) // Registration fee
+  seatNumber        String?  @map("seat_number") @db.VarChar(20)
+  waitingListOrder  Int?     @map("waiting_list_order")
+  notes             String?  @db.Text
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz()
+  confirmedAt       DateTime? @map("confirmed_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  candidate    User          @relation(fields: [candidateId], references: [id])
+  examSchedule ExamSchedule  @relation(fields: [examScheduleId], references: [id], onDelete: Cascade)
+  testCenter   TestCenter?   @relation(fields: [testCenterId], references: [id])
+  seat         Seat?         @relation(fields: [seatId], references: [id])
+  vouchers     Voucher[]
+  payments     Payment[]
+  couponUsages CouponUsage[]
+
+  @@index([tenantId])
+  @@index([candidateId])
+  @@index([examScheduleId])
+  @@index([tenantId, status])
+  @@index([examScheduleId, status])
+  @@index([seatId])
+  @@map("registrations")
+}
+
+// ============================================================
+// 40. Voucher (Exam Entry Voucher, belongs to Registration)
+// ============================================================
+model Voucher {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenantId       String  @map("tenant_id") @db.Uuid
+  registrationId String  @map("registration_id") @db.Uuid
+  candidateId    String  @map("candidate_id") @db.Uuid
+
+  code     String  @unique @db.VarChar(30) // e.g. "VCH-2026-0001"
+  qrData   String? @map("qr_data") @db.Text // QR code data (JSON or encoded string)
+  status   String  @default("VALID") @db.VarChar(20) // VALID, USED, EXPIRED, CANCELLED
+  isUsed   Boolean @default(false) @map("is_used")
+  usedAt   DateTime? @map("used_at") @db.Timestamptz()
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  candidate    User         @relation(fields: [candidateId], references: [id])
+
+  @@index([tenantId])
+  @@index([registrationId])
+  @@index([code])
+  @@index([tenantId, status])
+  @@map("vouchers")
+}
+
+// ============================================================
+// 41. Payment (Payment for Registration)
+// ============================================================
+model Payment {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenantId       String  @map("tenant_id") @db.Uuid
+  registrationId String  @map("registration_id") @db.Uuid
+  candidateId    String  @map("candidate_id") @db.Uuid
+
+  amount         Float                               // Payment amount (THB)
+  currency       String   @default("THB") @db.VarChar(3)
+  method         String   @db.VarChar(30)            // CREDIT_CARD, BANK_TRANSFER, PROMPTPAY, E_WALLET
+  status         String   @default("PENDING") @db.VarChar(20) // PENDING, COMPLETED, FAILED, REFUNDED
+  transactionId  String?  @map("transaction_id") @db.VarChar(255) // External transaction reference
+  gatewayRef     String?  @map("gateway_ref") @db.VarChar(255)    // Payment gateway reference
+  description    String?  @db.Text
+  metadata       Json?    @db.JsonB                  // Additional gateway data
+
+  paidAt    DateTime?  @map("paid_at") @db.Timestamptz()
+  failedAt  DateTime?  @map("failed_at") @db.Timestamptz()
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  candidate    User         @relation(fields: [candidateId], references: [id])
+  invoice              Invoice?
+  refunds              Refund[]
+  ewalletTransactions  EwalletTransaction[]
+
+  @@index([tenantId])
+  @@index([registrationId])
+  @@index([candidateId])
+  @@index([tenantId, status])
+  @@index([transactionId])
+  @@map("payments")
+}
+
+// ============================================================
+// 42. Invoice (Auto-generated from Payment)
+// ============================================================
+model Invoice {
+  id            String @id @default(uuid()) @db.Uuid
+  tenantId      String @map("tenant_id") @db.Uuid
+  paymentId     String @unique @map("payment_id") @db.Uuid
+
+  invoiceNumber String @unique @map("invoice_number") @db.VarChar(30) // e.g. INV-2026-0001
+  items         Json   @db.JsonB     // [{description, quantity, unitPrice, amount}]
+  subtotal      Float
+  taxRate       Float  @default(0) @map("tax_rate")  // e.g. 0.07 for 7% VAT
+  taxAmount     Float  @default(0) @map("tax_amount")
+  total         Float
+  notes         String? @db.Text
+
+  issuedAt  DateTime  @default(now()) @map("issued_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([invoiceNumber])
+  @@map("invoices")
+}
+
+// ============================================================
+// 43. Refund (Refund for a Payment)
+// ============================================================
+model Refund {
+  id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
+  paymentId String @map("payment_id") @db.Uuid
+
+  amount       Float                                   // Refund amount (can be partial)
+  reason       String?  @db.Text
+  status       String   @default("PENDING") @db.VarChar(20) // PENDING, APPROVED, PROCESSED, REJECTED
+  processedById String? @map("processed_by_id") @db.Uuid
+  processedAt  DateTime? @map("processed_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  processedBy User?    @relation("RefundProcessedBy", fields: [processedById], references: [id])
+
+  @@index([tenantId])
+  @@index([paymentId])
+  @@index([tenantId, status])
+  @@map("refunds")
+}
+
+// ============================================================
+// 44. Coupon (Discount Coupon)
+// ============================================================
+model Coupon {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+
+  code        String  @unique @db.VarChar(50)  // e.g. "WELCOME2026"
+  description String? @db.Text
+  type        String  @db.VarChar(20)          // PERCENTAGE, FIXED
+  value       Float                              // 20 for 20%, or 500 for ฿500
+  maxUses     Int     @default(0) @map("max_uses") // 0 = unlimited
+  usedCount   Int     @default(0) @map("used_count")
+  minAmount   Float?  @map("min_amount")        // Minimum purchase amount
+  maxDiscount Float?  @map("max_discount")      // Max discount for PERCENTAGE type
+  isActive    Boolean @default(true) @map("is_active")
+
+  validFrom DateTime  @map("valid_from") @db.Timestamptz()
+  validTo   DateTime  @map("valid_to") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  couponUsages CouponUsage[]
+
+  @@index([tenantId])
+  @@index([code])
+  @@index([tenantId, isActive])
+  @@map("coupons")
+}
+
+// ============================================================
+// 45. CouponUsage (Track coupon usage per registration)
+// ============================================================
+model CouponUsage {
+  id             String @id @default(uuid()) @db.Uuid
+  couponId       String @map("coupon_id") @db.Uuid
+  registrationId String @map("registration_id") @db.Uuid
+
+  discountAmount Float  @map("discount_amount") // Actual discount applied
+  usedAt         DateTime @default(now()) @map("used_at") @db.Timestamptz()
+
+  // Relations
+  coupon       Coupon       @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, registrationId])
+  @@index([couponId])
+  @@index([registrationId])
+  @@map("coupon_usages")
+}
+
+// ============================================================
+// 46. ExamDayLog (Check-in + Incidents for Exam Day)
+// ============================================================
+model ExamDayLog {
+  id              String  @id @default(uuid()) @db.Uuid
+  tenantId        String  @map("tenant_id") @db.Uuid
+  examScheduleId  String  @map("exam_schedule_id") @db.Uuid
+  testCenterId    String? @map("test_center_id") @db.Uuid
+  createdById     String? @map("created_by_id") @db.Uuid
+
+  type        String  @db.VarChar(30)  // CHECKIN, INCIDENT, NOTE, LATE_CHECKIN, CHECKIN_FAILED
+  description String? @db.Text
+  severity    String? @db.VarChar(20)  // LOW, MEDIUM, HIGH (for incidents)
+  metadata    Json?   @db.JsonB        // Additional data (candidate info, voucher code, seat, etc.)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  examSchedule ExamSchedule  @relation(fields: [examScheduleId], references: [id], onDelete: Cascade)
+  testCenter   TestCenter?   @relation(fields: [testCenterId], references: [id])
+  createdBy    User?         @relation("ExamDayLogCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId])
+  @@index([examScheduleId])
+  @@index([examScheduleId, type])
+  @@map("exam_day_logs")
+}
+
+// ============================================================
+// 40. CenterApproval (Test Center approval workflow)
+// ============================================================
+model CenterApproval {
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @map("tenant_id") @db.Uuid
+  testCenterId String  @map("test_center_id") @db.Uuid
+  reviewedById String? @map("reviewed_by_id") @db.Uuid
+
+  type        String  @db.VarChar(20)  // INITIAL, RENEWAL
+  status      String  @default("PENDING") @db.VarChar(20) // PENDING, IN_REVIEW, APPROVED, REJECTED
+  comments    String? @db.Text
+  checklist   Json?   @db.JsonB  // Inspection checklist results [{item, passed, notes}]
+  documents   Json?   @db.JsonB  // Attached document URLs [{name, url, type}]
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz()
+  reviewedAt  DateTime? @map("reviewed_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  testCenter TestCenter  @relation(fields: [testCenterId], references: [id], onDelete: Cascade)
+  reviewedBy User?       @relation("CenterApprovalReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([tenantId])
+  @@index([testCenterId])
+  @@index([status])
+  @@map("center_approvals")
+}
+
+// ============================================================
+// 27. CandidateProfile (e-Profile)
+// ============================================================
+model CandidateProfile {
+  id               String  @id @default(uuid()) @db.Uuid
+  userId           String  @unique @map("user_id") @db.Uuid
+  displayName      String? @map("display_name") @db.VarChar(255)
+  institution      String? @db.VarChar(255)
+  bio              String? @db.Text
+  avatarUrl        String? @map("avatar_url") @db.VarChar(500)
+  publicProfileUrl String? @unique @map("public_profile_url") @db.VarChar(100)
+  isPublic         Boolean @default(false) @map("is_public")
+  privacySettings  Json?   @default("{}") @map("privacy_settings") @db.JsonB
+  // privacySettings: { showEmail, showPhone, showResults, showCertificates, showInstitution }
+
+  // Personal Info
+  dateOfBirth    DateTime? @map("date_of_birth") @db.Date
+  gender         String?   @db.VarChar(20) // "male" | "female" | "unspecified"
+  nationalId     String?   @map("national_id") @db.VarChar(255)
+  address        String?   @db.Text
+
+  // Education
+  educationLevel String? @map("education_level") @db.VarChar(50)
+  faculty        String? @db.VarChar(255)
+  major          String? @db.VarChar(255)
+  graduationYear Int?    @map("graduation_year")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  educations Education[]
+
+  @@map("candidate_profiles")
+}
+
+// ============================================================
+// 27a2. Education (multiple education records per candidate)
+// ============================================================
+model Education {
+  id             String  @id @default(uuid()) @db.Uuid
+  profileId      String  @map("profile_id") @db.Uuid
+  educationLevel String  @map("education_level") @db.VarChar(50)
+  institution    String  @db.VarChar(255)
+  faculty        String? @db.VarChar(255)
+  major          String? @db.VarChar(255)
+  graduationYear Int?    @map("graduation_year")
+  sortOrder      Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  profile CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("educations")
+}
+
+// ============================================================
+// 27b. EmailVerification (pending email change requests)
+// ============================================================
+model EmailVerification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  newEmail  String    @map("new_email") @db.VarChar(255)
+  token     String    @unique @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz()
+  usedAt    DateTime? @map("used_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("email_verifications")
+}
+
+// ============================================================
+// 28. EwalletConnection (Tenant ↔ e-Wallet config)
+// ============================================================
+model EwalletConnection {
+  id            String  @id @default(uuid()) @db.Uuid
+  tenantId      String  @map("tenant_id") @db.Uuid
+  apiUrl        String  @map("api_url") @db.VarChar(500)
+  apiKey        String  @map("api_key") @db.VarChar(500)
+  apiSecret     String  @map("api_secret") @db.VarChar(500)
+  webhookSecret String  @map("webhook_secret") @db.VarChar(500)
+  isActive      Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId])
+  @@map("ewallet_connections")
+}
+
+// ============================================================
+// 29. EwalletTransaction (Payment ↔ e-Wallet transaction)
+// ============================================================
+model EwalletTransaction {
+  id                    String  @id @default(uuid()) @db.Uuid
+  paymentId             String  @map("payment_id") @db.Uuid
+  externalTransactionId String? @map("external_transaction_id") @db.VarChar(255)
+  type                  String  @db.VarChar(20) // PAYMENT, REFUND
+  status                String  @default("PENDING") @db.VarChar(20) // PENDING, PROCESSING, COMPLETED, FAILED
+  amount                Float
+  currency              String  @default("THB") @db.VarChar(3)
+  metadata              Json?   @db.JsonB
+
+  processedAt DateTime? @map("processed_at") @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([externalTransactionId])
+  @@index([status])
+  @@map("ewallet_transactions")
+}
+
+// ============================================================
+// 30. CertificateTemplate
+// ============================================================
+model CertificateTemplate {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @map("tenant_id") @db.Uuid
+  name      String  @db.VarChar(255)
+  design    Json    @db.JsonB  // Template design config (layout, colors, fonts, logo)
+  variables Json?   @db.JsonB  // Available variables [{name, description, default}]
+  isDefault Boolean @default(false) @map("is_default")
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  certificates Certificate[]
+
+  @@index([tenantId])
+  @@map("certificate_templates")
+}
+
+// ============================================================
+// 31. Certificate
+// ============================================================
+model Certificate {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  templateId        String    @map("template_id") @db.Uuid
+  candidateId       String    @map("candidate_id") @db.Uuid
+  gradeId           String    @map("grade_id") @db.Uuid
+  certificateNumber String    @unique @map("certificate_number") @db.VarChar(50)
+  issuedAt          DateTime  @map("issued_at") @db.Timestamptz()
+  expiresAt         DateTime? @map("expires_at") @db.Timestamptz()
+  verificationUrl   String?   @map("verification_url") @db.VarChar(500)
+  status            String    @default("ACTIVE") @db.VarChar(20) // ACTIVE, REVOKED, EXPIRED
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz()
+  revokeReason      String?   @map("revoke_reason") @db.Text
+  metadata          Json?     @db.JsonB  // Extra cert data (score, exam details)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template     CertificateTemplate @relation(fields: [templateId], references: [id])
+  candidate    User                @relation(fields: [candidateId], references: [id])
+  grade        Grade               @relation(fields: [gradeId], references: [id])
+  digitalBadge DigitalBadge?
+
+  @@index([tenantId])
+  @@index([candidateId])
+  @@index([gradeId])
+  @@index([status])
+  @@map("certificates")
+}
+
+// ============================================================
+// 32. DigitalBadge
+// ============================================================
+model DigitalBadge {
+  id            String @id @default(uuid()) @db.Uuid
+  certificateId String @unique @map("certificate_id") @db.Uuid
+  badgeUrl      String @map("badge_url") @db.VarChar(500)
+  metadata      Json?  @db.JsonB  // Badge metadata (issuer, criteria, evidence)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  certificate Certificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+
+  @@map("digital_badges")
+}
+
+// ============================================================
+// 33. ProctoringSession
+// ============================================================
+model ProctoringSession {
+  id                 String  @id @default(uuid()) @db.Uuid
+  examSessionId      String  @unique @map("exam_session_id") @db.Uuid
+  status             String  @default("MONITORING") @db.VarChar(20) // MONITORING, FLAGGED, REVIEWED
+  webcamEnabled      Boolean @default(false) @map("webcam_enabled")
+  screenShareEnabled Boolean @default(false) @map("screen_share_enabled")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  examSession      ExamSession      @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
+  proctoringEvents ProctoringEvent[]
+  incidents        Incident[]
+
+  @@index([status])
+  @@map("proctoring_sessions")
+}
+
+// ============================================================
+// 34. ProctoringEvent
+// ============================================================
+model ProctoringEvent {
+  id                  String   @id @default(uuid()) @db.Uuid
+  proctoringSessionId String   @map("proctoring_session_id") @db.Uuid
+  type                String   @db.VarChar(30) // FACE_NOT_DETECTED, MULTIPLE_FACES, SCREEN_SWITCH, NOISE, TAB_SWITCH, COPY_PASTE
+  severity            String   @default("LOW") @db.VarChar(10) // LOW, MEDIUM, HIGH
+  screenshot          String?  @db.VarChar(500) // Screenshot URL
+  metadata            Json?    @db.JsonB
+
+  timestamp DateTime @default(now()) @db.Timestamptz()
+
+  // Relations
+  proctoringSession ProctoringSession @relation(fields: [proctoringSessionId], references: [id], onDelete: Cascade)
+
+  @@index([proctoringSessionId])
+  @@index([type])
+  @@index([severity])
+  @@map("proctoring_events")
+}
+
+// ============================================================
+// 35. Incident (Proctor-created incidents)
+// ============================================================
+model Incident {
+  id                  String    @id @default(uuid()) @db.Uuid
+  proctoringSessionId String    @map("proctoring_session_id") @db.Uuid
+  type                String    @db.VarChar(30) // SUSPICIOUS_BEHAVIOR, TECHNICAL_ISSUE, POLICY_VIOLATION, OTHER
+  description         String    @db.Text
+  action              String    @db.VarChar(20) // WARNING, PAUSE, TERMINATE
+  createdById         String    @map("created_by_id") @db.Uuid
+  resolvedAt          DateTime? @map("resolved_at") @db.Timestamptz()
+  resolution          String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  proctoringSession ProctoringSession @relation(fields: [proctoringSessionId], references: [id], onDelete: Cascade)
+  createdBy         User              @relation("IncidentCreatedBy", fields: [createdById], references: [id])
+
+  @@index([proctoringSessionId])
+  @@index([type])
+  @@map("incidents")
+}
+
+// ============================================================
+// 36. ApiKey (Tenant API Keys for external integrations)
+// ============================================================
+model ApiKey {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  name       String    @db.VarChar(255)
+  prefix     String    @db.VarChar(10)  // First 8 chars for identification
+  keyHash    String    @map("key_hash") @db.VarChar(255) // SHA-256 hash
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz()
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz()
+  isActive   Boolean   @default(true) @map("is_active")
+  scopes     Json?     @db.JsonB  // Allowed permission scopes
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([prefix])
+  @@map("api_keys")
+}
+
+// ============================================================
+// 37. Webhook (Tenant Webhook subscriptions)
+// ============================================================
+model Webhook {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  url             String    @db.VarChar(500)
+  events          Json      @db.JsonB  // Array of event names to subscribe to
+  secret          String    @db.VarChar(255)  // Signing secret
+  isActive        Boolean   @default(true) @map("is_active")
+  lastTriggeredAt DateTime? @map("last_triggered_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  logs   WebhookLog[]
+
+  @@index([tenantId])
+  @@map("webhooks")
+}
+
+// ============================================================
+// 38. WebhookLog (Webhook delivery history)
+// ============================================================
+model WebhookLog {
+  id         String @id @default(uuid()) @db.Uuid
+  webhookId  String @map("webhook_id") @db.Uuid
+  event      String @db.VarChar(100)
+  payload    Json   @db.JsonB
+  statusCode Int?   @map("status_code")
+  response   String? @db.Text
+  duration   Int?    // Response time in ms
+  attempt    Int     @default(1)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([event])
+  @@map("webhook_logs")
+}
