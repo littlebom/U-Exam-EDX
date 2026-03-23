@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
 import { emitProctoringEvent, emitCandidateEvent } from "@/lib/sse-emitter";
 
@@ -146,7 +147,7 @@ export async function getSessionsBySchedule(
       eventCount: s._count.proctoringEvents,
       incidentCount: s._count.incidents,
     })),
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -210,7 +211,7 @@ export async function getActiveProctoringeSessions(
       eventCount: s._count.proctoringEvents,
       incidentCount: s._count.incidents,
     })),
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -300,7 +301,7 @@ export async function getProctoringEvents(
 
   return {
     data: events,
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -424,7 +425,7 @@ export async function listIncidents(
       resolution: i.resolution,
       createdAt: i.createdAt,
     })),
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

@@ -1,6 +1,22 @@
 import { auth } from "@/lib/auth";
 import { errors } from "@/lib/errors";
 
+/**
+ * Alias for `auth()` — used by proctoring routes that need raw session
+ */
+export const getSessionContext = auth;
+
+/**
+ * Require authenticated candidate (no tenant check)
+ */
+export async function requireCandidate(): Promise<{ userId: string }> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw errors.unauthorized("กรุณาเข้าสู่ระบบ");
+  }
+  return { userId: session.user.id };
+}
+
 export interface SessionContext {
   userId: string;
   userName: string;

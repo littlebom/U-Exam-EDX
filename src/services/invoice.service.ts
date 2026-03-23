@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type { invoiceFilterSchema } from "@/lib/validations/payment";
 import type { z } from "zod";
 
@@ -55,12 +56,7 @@ export async function listInvoices(tenantId: string, filters: InvoiceFilter) {
 
   return {
     data: invoices,
-    meta: {
-      total,
-      page,
-      perPage,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

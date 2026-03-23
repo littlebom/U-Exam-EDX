@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type { WaitingListFilter } from "@/lib/validations/voucher";
 
 // ═══════════════════════════════════════════════════════════════════
@@ -50,7 +51,7 @@ export async function listWaitingList(tenantId: string, filters: WaitingListFilt
 
   return {
     data,
-    meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

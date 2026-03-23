@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
 import crypto from "crypto";
 
@@ -70,7 +71,7 @@ export async function listCertificates(
       hasBadge: !!c.digitalBadge,
       badgeUrl: c.digitalBadge?.badgeUrl ?? null,
     })),
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -314,7 +315,7 @@ export async function listCandidateCertificates(
       hasBadge: !!c.digitalBadge,
       badgeUrl: c.digitalBadge?.badgeUrl ?? null,
     })),
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

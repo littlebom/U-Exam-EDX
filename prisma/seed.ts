@@ -47,6 +47,7 @@ const PERMISSIONS = [
   { module: "registration", action: "cancel", code: "registration:cancel", description: "ยกเลิกการสมัคร" },
   // Payment
   { module: "payment", action: "list", code: "payment:list", description: "ดูรายการชำระเงิน" },
+  { module: "payment", action: "create", code: "payment:create", description: "สร้าง/แก้ไขข้อมูลชำระเงินและคูปอง" },
   { module: "payment", action: "refund", code: "payment:refund", description: "คืนเงิน" },
   { module: "payment", action: "invoice", code: "payment:invoice", description: "จัดการใบเสร็จ" },
   // Certificate

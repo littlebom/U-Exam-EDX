@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { buildPaginationMeta } from "@/types";
 import type { PaginationMeta } from "@/types";
 
 interface NotificationListResult {
@@ -31,12 +32,7 @@ export async function listNotifications(
 
   return {
     data: data as unknown as Array<Record<string, unknown>>,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

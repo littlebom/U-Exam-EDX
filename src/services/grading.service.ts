@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
 import { sendNotification } from "@/services/notification.service";
+import { buildPaginationMeta } from "@/types";
 import type { PaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
 import type {
@@ -96,12 +97,7 @@ export async function listGrades(
 
   return {
     data,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -211,12 +207,7 @@ export async function getGradingQueue(
 
   return {
     data,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -596,12 +587,7 @@ export async function listRubrics(
 
   return {
     data,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

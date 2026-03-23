@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type {
   CreateCouponInput,
   UpdateCouponInput,
@@ -45,12 +46,7 @@ export async function listCoupons(tenantId: string, filters: CouponFilter) {
 
   return {
     data: coupons,
-    meta: {
-      total,
-      page,
-      perPage,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

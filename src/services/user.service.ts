@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth-utils";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type { PaginationParams, PaginationMeta } from "@/types";
 
 interface UserListResult {
@@ -63,12 +64,7 @@ export async function listUsers(
 
   return {
     data: data as unknown as Array<Record<string, unknown>>,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

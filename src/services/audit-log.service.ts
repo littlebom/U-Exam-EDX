@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { buildPaginationMeta } from "@/types";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -179,6 +180,6 @@ export async function listAuditLogs(
       userEmail: log.user?.email ?? null,
       createdAt: log.createdAt,
     })),
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }

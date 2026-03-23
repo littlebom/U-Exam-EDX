@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type { PaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
 
@@ -62,12 +63,7 @@ export async function listGraderAssignments(
 
   return {
     data,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

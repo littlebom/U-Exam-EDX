@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type {
   CreateSeat,
   UpdateSeat,
@@ -164,7 +165,7 @@ export async function listEquipment(tenantId: string, filters: EquipmentFilter) 
 
   return {
     data,
-    meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

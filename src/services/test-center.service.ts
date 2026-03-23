@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type {
   CreateTestCenter,
   UpdateTestCenter,
@@ -63,7 +64,7 @@ export async function listTestCenters(tenantId: string, filters: TestCenterFilte
 
   return {
     data: centersWithCapacity,
-    meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -163,7 +164,7 @@ export async function listBuildings(tenantId: string, filters: BuildingFilter) {
 
   return {
     data: data.map((b) => ({ ...b, roomsCount: b._count.rooms })),
-    meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -239,7 +240,7 @@ export async function listRooms(tenantId: string, filters: RoomFilter) {
 
   return {
     data,
-    meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

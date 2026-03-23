@@ -44,12 +44,7 @@ export function useList<T>(
   return useQuery<PaginatedResult<T>>({
     queryKey: [key, params],
     queryFn: async () => {
-      const res = await fetch(url);
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error?.message ?? `API error ${res.status}`);
-      }
-      const json = await res.json();
+      const json = await apiFetch<{ data: T[]; meta: PaginationMeta }>(url);
       return {
         data: json.data ?? [],
         meta: json.meta ?? { page: 1, perPage: 20, total: 0, totalPages: 0 },

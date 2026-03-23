@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { extractPlainText } from "@/lib/content-utils";
 import { cached } from "@/lib/cache";
+import { buildPaginationMeta } from "@/types";
 import type {
   OverviewFilter,
   ScoreDistributionFilter,
@@ -328,12 +329,7 @@ export async function getItemAnalysis(
 
   return {
     data: items,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

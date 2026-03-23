@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type { PaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
 
@@ -157,12 +158,7 @@ export async function listExams(
 
   return {
     data: data as unknown as Array<Record<string, unknown>>,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

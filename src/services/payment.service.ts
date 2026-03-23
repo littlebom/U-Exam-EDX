@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import { sendNotification } from "@/services/notification.service";
 import type {
   CreatePaymentInput,
@@ -54,12 +55,7 @@ export async function listPayments(tenantId: string, filters: PaymentFilter) {
 
   return {
     data: payments,
-    meta: {
-      total,
-      page,
-      perPage,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

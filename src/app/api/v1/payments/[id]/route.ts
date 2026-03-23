@@ -20,7 +20,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
 export async function PUT(req: NextRequest, context: RouteContext) {
   try {
-    const session = await requirePermission("payment:list");
+    const session = await requirePermission("payment:create");
     const { id } = await context.params;
     const body = await req.json();
     const data = processPaymentSchema.parse(body);

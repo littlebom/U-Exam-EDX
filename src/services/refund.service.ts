@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import { sendNotification } from "@/services/notification.service";
 import type { CreateRefundInput } from "@/lib/validations/payment";
 
@@ -47,12 +48,7 @@ export async function listRefunds(
 
   return {
     data: refunds,
-    meta: {
-      total,
-      page,
-      perPage,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

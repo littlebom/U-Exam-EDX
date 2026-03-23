@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { handleApiError } from "@/lib/errors";
+import { STAFF_ROLES } from "@/lib/constants";
 import { z } from "zod";
 import { sendEmail } from "@/lib/mailer";
 import { renderNotificationEmail } from "@/lib/email-templates";
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
       if (to === "candidates") {
         roleFilter.push("CANDIDATE");
       } else if (to === "staff") {
-        roleFilter.push("ADMIN", "EXAM_CREATOR", "GRADER", "PROCTOR", "CENTER_MANAGER", "CENTER_STAFF");
+        roleFilter.push(...STAFF_ROLES);
       }
 
       const userTenants = await prisma.userTenant.findMany({

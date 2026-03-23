@@ -1,3 +1,4 @@
+// Admin/internal route — candidates should use /api/v1/profile/exam-sessions/[id]/start
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionTenant } from "@/lib/get-session";
 import { startExam } from "@/services/exam-session.service";

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type {
   CreateCenterStaff,
   UpdateCenterStaff,
@@ -45,7 +46,7 @@ export async function listCenterStaff(tenantId: string, filters: CenterStaffFilt
 
   return {
     data,
-    meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -156,7 +157,7 @@ export async function listStaffShifts(tenantId: string, filters: StaffShiftFilte
 
   return {
     data,
-    meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

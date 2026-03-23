@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import crypto from "crypto";
 import type { Prisma } from "@/generated/prisma";
 
@@ -189,6 +190,6 @@ export async function getWebhookLogs(
 
   return {
     data: logs,
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }

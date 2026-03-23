@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
 import { extractPlainText } from "@/lib/content-utils";
+import { buildPaginationMeta } from "@/types";
 import type { PaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
 
@@ -152,12 +153,7 @@ export async function listQuestions(
 
   return {
     data: data as unknown as Array<Record<string, unknown>>,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

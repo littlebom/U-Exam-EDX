@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 
 // ─── List Exam Results ──────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ export async function listExamResults(
       gradedAt: g.gradedAt,
       sessionId: g.session.id,
     })),
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
@@ -200,6 +201,6 @@ export async function getRegistrationHistory(
       voucher: r.vouchers[0] ?? null,
       createdAt: r.createdAt,
     })),
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }

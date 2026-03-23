@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await requirePermission("payment:list");
+    const session = await requirePermission("payment:create");
     const body = await req.json();
     const data = createCouponSchema.parse(body);
     const coupon = await createCoupon(session.tenantId, data);

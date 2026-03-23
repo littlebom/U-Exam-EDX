@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type { PaginationParams, PaginationMeta } from "@/types";
 
 interface TenantListResult {
@@ -33,12 +34,7 @@ export async function listTenants(params: PaginationParams = {}): Promise<Tenant
 
   return {
     data: data as unknown as Array<Record<string, unknown>>,
-    meta: {
-      page,
-      perPage,
-      total,
-      totalPages: Math.ceil(total / perPage),
-    },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

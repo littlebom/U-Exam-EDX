@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type {
   CreateVoucher,
   VoucherFilter,
@@ -73,7 +74,7 @@ export async function listVouchers(tenantId: string, filters: VoucherFilter) {
 
   return {
     data,
-    meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 
 // ─── List Approvals ─────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ export async function listApprovals(
 
   return {
     data: approvals,
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 

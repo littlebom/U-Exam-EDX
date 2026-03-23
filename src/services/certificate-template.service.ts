@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { buildPaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
 
 // ─── List Templates ─────────────────────────────────────────────────
@@ -36,7 +37,7 @@ export async function listCertificateTemplates(
       certificateCount: t._count.certificates,
       createdAt: t.createdAt,
     })),
-    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+    meta: buildPaginationMeta(page, perPage, total),
   };
 }
 
