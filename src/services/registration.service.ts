@@ -232,15 +232,23 @@ export async function deleteRegistration(tenantId: string, id: string) {
 // ─── Registration Stats ─────────────────────────────────────────────
 
 export async function getRegistrationStats(tenantId: string) {
-  const [total, confirmed, pending, cancelled, waitingList] = await Promise.all([
-    prisma.registration.count({ where: { tenantId } }),
-    prisma.registration.count({ where: { tenantId, status: "CONFIRMED" } }),
-    prisma.registration.count({ where: { tenantId, status: "PENDING" } }),
-    prisma.registration.count({ where: { tenantId, status: "CANCELLED" } }),
-    prisma.registration.count({ where: { tenantId, status: "WAITING_LIST" } }),
-  ]);
+  // Single groupBy instead of 5 separate count queries
+  const groups = await prisma.registration.groupBy({
+    by: ["status"],
+    where: { tenantId },
+    _count: true,
+  });
 
-  return { total, confirmed, pending, cancelled, waitingList };
+  const countMap = Object.fromEntries(groups.map((g) => [g.status, g._count]));
+  const total = groups.reduce((sum, g) => sum + g._count, 0);
+
+  return {
+    total,
+    confirmed: countMap["CONFIRMED"] ?? 0,
+    pending: countMap["PENDING"] ?? 0,
+    cancelled: countMap["CANCELLED"] ?? 0,
+    waitingList: countMap["WAITING_LIST"] ?? 0,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════

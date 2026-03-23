@@ -280,12 +280,17 @@ export async function batchGrade(
   if (grade.status === "PUBLISHED") throw errors.validation("ไม่สามารถแก้ไขคะแนนที่เผยแพร่แล้ว");
 
   return prisma.$transaction(async (tx) => {
-    for (const answer of input.answers) {
-      const ga = await tx.gradeAnswer.findUnique({
-        where: { answerId: answer.answerId },
-      });
+    // Batch fetch all grade answers — 1 query instead of N
+    const answerIds = input.answers.map((a) => a.answerId);
+    const gradeAnswers = await tx.gradeAnswer.findMany({
+      where: { gradeId, answerId: { in: answerIds } },
+    });
+    const gaMap = new Map(gradeAnswers.map((ga) => [ga.answerId, ga]));
 
-      if (!ga || ga.gradeId !== gradeId) continue;
+    // Update each (still N updates — unavoidable since each has different score/feedback)
+    for (const answer of input.answers) {
+      const ga = gaMap.get(answer.answerId);
+      if (!ga) continue;
 
       const score = Math.min(answer.score, ga.maxScore);
 
@@ -518,33 +523,43 @@ export async function bulkPublishGrades(tenantId: string, gradeIds: string[]) {
 // ─── Grading Stats ──────────────────────────────────────────────────
 
 export async function getGradingStats(tenantId: string) {
-  const [pending, grading, completed, published, totalAppeals, pendingAppeals] =
-    await Promise.all([
-      prisma.grade.count({ where: { tenantId, status: "DRAFT" } }),
-      prisma.grade.count({ where: { tenantId, status: "GRADING" } }),
-      prisma.grade.count({ where: { tenantId, status: "COMPLETED" } }),
-      prisma.grade.count({ where: { tenantId, status: "PUBLISHED" } }),
-      prisma.appeal.count({ where: { tenantId } }),
-      prisma.appeal.count({ where: { tenantId, status: "PENDING" } }),
-    ]);
+  // Consolidate: 2 groupBy + 2 counts instead of 8 separate queries
+  const [gradeGroups, appealGroups, manualPending, manualGraded] = await Promise.all([
+    prisma.grade.groupBy({
+      by: ["status"],
+      where: { tenantId },
+      _count: true,
+    }),
+    prisma.appeal.groupBy({
+      by: ["status"],
+      where: { tenantId },
+      _count: true,
+    }),
+    prisma.gradeAnswer.count({
+      where: {
+        grade: { tenantId, status: { in: ["GRADING", "DRAFT"] } },
+        isAutoGraded: false,
+        gradedById: null,
+      },
+    }),
+    prisma.gradeAnswer.count({
+      where: {
+        grade: { tenantId },
+        isAutoGraded: false,
+        gradedById: { not: null },
+      },
+    }),
+  ]);
 
-  // Count manual grading queue items
-  const manualPending = await prisma.gradeAnswer.count({
-    where: {
-      grade: { tenantId, status: { in: ["GRADING", "DRAFT"] } },
-      isAutoGraded: false,
-      feedback: null,
-      score: 0,
-    },
-  });
+  const gradeMap = Object.fromEntries(gradeGroups.map((g) => [g.status, g._count]));
+  const appealMap = Object.fromEntries(appealGroups.map((g) => [g.status, g._count]));
+  const totalAppeals = appealGroups.reduce((sum, g) => sum + g._count, 0);
 
-  const manualGraded = await prisma.gradeAnswer.count({
-    where: {
-      grade: { tenantId },
-      isAutoGraded: false,
-      feedback: { not: null },
-    },
-  });
+  const pending = gradeMap["DRAFT"] ?? 0;
+  const grading = gradeMap["GRADING"] ?? 0;
+  const completed = gradeMap["COMPLETED"] ?? 0;
+  const published = gradeMap["PUBLISHED"] ?? 0;
+  const pendingAppeals = appealMap["PENDING"] ?? 0;
 
   return {
     grades: { pending, grading, completed, published },

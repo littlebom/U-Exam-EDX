@@ -277,35 +277,52 @@ export async function bulkGenerateVouchers(tenantId: string, examScheduleId: str
     select: { id: true, candidateId: true },
   });
 
-  let created = 0;
+  // Generate all codes upfront
+  const codeMap = new Map<string, typeof registrations[number]>();
   for (const reg of registrations) {
     let code = generateVoucherCode();
-    let attempts = 0;
-    while (attempts < 10) {
-      const exists = await prisma.voucher.findUnique({ where: { code } });
-      if (!exists) break;
+    // Simple collision avoidance within this batch
+    while (codeMap.has(code)) {
       code = generateVoucherCode();
-      attempts++;
     }
-
-    const qrData = JSON.stringify({
-      code,
-      registrationId: reg.id,
-      candidateId: reg.candidateId,
-    });
-
-    await prisma.voucher.create({
-      data: {
-        tenantId,
-        registrationId: reg.id,
-        candidateId: reg.candidateId,
-        code,
-        qrData,
-        status: "VALID",
-      },
-    });
-    created++;
+    codeMap.set(code, reg);
   }
 
-  return { created, total: registrations.length };
+  // Batch check existing codes — 1 query instead of N×10
+  const allCodes = Array.from(codeMap.keys());
+  const existing = allCodes.length > 0
+    ? await prisma.voucher.findMany({
+        where: { code: { in: allCodes } },
+        select: { code: true },
+      })
+    : [];
+  const existingSet = new Set(existing.map((e) => e.code));
+
+  // Regenerate colliding codes
+  for (const [code, reg] of codeMap) {
+    if (existingSet.has(code)) {
+      codeMap.delete(code);
+      let newCode = generateVoucherCode();
+      let attempts = 0;
+      while ((codeMap.has(newCode) || existingSet.has(newCode)) && attempts < 10) {
+        newCode = generateVoucherCode();
+        attempts++;
+      }
+      codeMap.set(newCode, reg);
+    }
+  }
+
+  // Batch create — 1 query
+  const voucherData = Array.from(codeMap.entries()).map(([code, reg]) => ({
+    tenantId,
+    registrationId: reg.id,
+    candidateId: reg.candidateId,
+    code,
+    qrData: JSON.stringify({ code, registrationId: reg.id, candidateId: reg.candidateId }),
+    status: "VALID" as const,
+  }));
+
+  const result = await prisma.voucher.createMany({ data: voucherData, skipDuplicates: true });
+
+  return { created: result.count, total: registrations.length };
 }

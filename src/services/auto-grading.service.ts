@@ -305,29 +305,38 @@ export async function autoGradeSession(
           },
         });
 
-    // Upsert grade answers
-    for (const result of autoGradeResults) {
-      await tx.gradeAnswer.upsert({
-        where: { answerId: result.answerId },
-        create: {
+    // Create or update grade answers
+    if (!existingGrade) {
+      // New grade — batch create all answers in 1 query
+      await tx.gradeAnswer.createMany({
+        data: autoGradeResults.map((result) => ({
           gradeId: gradeRecord.id,
           answerId: result.answerId,
           score: result.isAutoGraded ? result.score : 0,
           maxScore: result.maxScore,
           isAutoGraded: result.isAutoGraded,
           isCorrect: result.isAutoGraded ? result.isCorrect : null,
-        },
-        update: result.isAutoGraded
-          ? {
-              score: result.score,
-              isAutoGraded: true,
-              isCorrect: result.isCorrect,
-            }
-          : {
-              // Don't overwrite manually graded scores on re-run
-              maxScore: result.maxScore,
-            },
+        })),
+        skipDuplicates: true,
       });
+    } else {
+      // Re-grade — must upsert individually to preserve manual grades
+      for (const result of autoGradeResults) {
+        await tx.gradeAnswer.upsert({
+          where: { answerId: result.answerId },
+          create: {
+            gradeId: gradeRecord.id,
+            answerId: result.answerId,
+            score: result.isAutoGraded ? result.score : 0,
+            maxScore: result.maxScore,
+            isAutoGraded: result.isAutoGraded,
+            isCorrect: result.isAutoGraded ? result.isCorrect : null,
+          },
+          update: result.isAutoGraded
+            ? { score: result.score, isAutoGraded: true, isCorrect: result.isCorrect }
+            : { maxScore: result.maxScore },
+        });
+      }
     }
 
     // Recalculate totals

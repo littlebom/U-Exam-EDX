@@ -48,50 +48,80 @@ export async function getActiveSchedulesWithProctoring() {
     orderBy: { startDate: "desc" },
   });
 
-  // Get proctoring stats per schedule
-  const result = await Promise.all(
-    schedules.map(async (schedule) => {
-      const procStats = await prisma.proctoringSession.groupBy({
-        by: ["status"],
-        where: {
-          examSession: {
-            examScheduleId: schedule.id,
-            status: "IN_PROGRESS",
-          },
-        },
-        _count: true,
-      });
+  // Batch queries instead of N+1 per schedule
+  const scheduleIds = schedules.map((s) => s.id);
 
-      const incidentCount = await prisma.incident.count({
-        where: {
-          proctoringSession: {
+  const [allProcStats, allIncidents] = scheduleIds.length > 0
+    ? await Promise.all([
+        prisma.proctoringSession.groupBy({
+          by: ["status"],
+          where: {
             examSession: {
-              examScheduleId: schedule.id,
+              examScheduleId: { in: scheduleIds },
+              status: "IN_PROGRESS",
             },
           },
-        },
-      });
+          _count: true,
+        }),
+        prisma.incident.groupBy({
+          by: ["proctoringSessionId"],
+          where: {
+            proctoringSession: {
+              examSession: { examScheduleId: { in: scheduleIds } },
+            },
+          },
+          _count: true,
+        }),
+      ])
+    : [[], []];
 
-      const monitoring = procStats.find((s) => s.status === "MONITORING")?._count ?? 0;
-      const flagged = procStats.find((s) => s.status === "FLAGGED")?._count ?? 0;
-      const reviewed = procStats.find((s) => s.status === "REVIEWED")?._count ?? 0;
+  // For per-schedule breakdown, we need schedule-level grouping
+  // Since Prisma groupBy can't group by nested relation, use a simpler approach:
+  // batch count per schedule using raw query
+  const incidentCounts = scheduleIds.length > 0
+    ? await prisma.$queryRaw<Array<{ schedule_id: string; cnt: bigint }>>`
+        SELECT esc.id AS schedule_id, COUNT(i.id)::bigint AS cnt
+        FROM "incidents" i
+        JOIN "proctoring_sessions" ps ON i."proctoringSessionId" = ps.id
+        JOIN "exam_sessions" es ON ps."examSessionId" = es.id
+        JOIN "exam_schedules" esc ON es."examScheduleId" = esc.id
+        WHERE esc.id = ANY(${scheduleIds})
+        GROUP BY esc.id
+      `.catch(() => [])
+    : [];
+  const incidentMap = new Map(incidentCounts.map((r) => [r.schedule_id, Number(r.cnt)]));
 
-      return {
-        scheduleId: schedule.id,
-        examTitle: schedule.exam.title,
-        startDate: schedule.startDate,
-        endDate: schedule.endDate,
-        testCenterName: schedule.testCenter?.name ?? null,
-        totalSessions: schedule._count.examSessions,
-        monitoring,
-        flagged,
-        reviewed,
-        incidentCount,
-      };
-    })
-  );
+  const procStatsBySchedule = scheduleIds.length > 0
+    ? await prisma.$queryRaw<Array<{ schedule_id: string; status: string; cnt: bigint }>>`
+        SELECT esc.id AS schedule_id, ps.status, COUNT(*)::bigint AS cnt
+        FROM "proctoring_sessions" ps
+        JOIN "exam_sessions" es ON ps."examSessionId" = es.id
+        JOIN "exam_schedules" esc ON es."examScheduleId" = esc.id
+        WHERE esc.id = ANY(${scheduleIds}) AND es.status = 'IN_PROGRESS'
+        GROUP BY esc.id, ps.status
+      `.catch(() => [])
+    : [];
+  const procMap = new Map<string, Record<string, number>>();
+  for (const row of procStatsBySchedule) {
+    if (!procMap.has(row.schedule_id)) procMap.set(row.schedule_id, {});
+    procMap.get(row.schedule_id)![row.status] = Number(row.cnt);
+  }
 
-  return result;
+  return schedules.map((schedule) => {
+    const stats = procMap.get(schedule.id) ?? {};
+    return {
+      scheduleId: schedule.id,
+      examTitle: schedule.exam.title,
+      startDate: schedule.startDate,
+      endDate: schedule.endDate,
+      testCenterName: schedule.testCenter?.name ?? null,
+      totalSessions: schedule._count.examSessions,
+      monitoring: stats["MONITORING"] ?? 0,
+      flagged: stats["FLAGGED"] ?? 0,
+      reviewed: stats["REVIEWED"] ?? 0,
+      incidentCount: incidentMap.get(schedule.id) ?? 0,
+    };
+  });
 }
 
 // ─── Get Sessions by Schedule ───────────────────────────────────────
