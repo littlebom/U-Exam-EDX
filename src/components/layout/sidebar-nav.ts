@@ -159,6 +159,7 @@ export const sidebarNav: NavItem[] = [
       { title: "e-Wallet", href: "/admin/settings/ewallet" },
       { title: "ชำระเงิน", href: "/admin/settings/payment" },
       { title: "อีเมล (SMTP)", href: "/admin/settings/email" },
+      { title: "Authentication (OAuth)", href: "/admin/settings/auth" },
     ],
   },
 ];
