@@ -13,6 +13,15 @@ import {
   MapPin,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Card,
   CardContent,
@@ -47,30 +56,24 @@ export default function ExamTrackingPage() {
   });
 
   const schedules = result?.data ?? [];
+  const activeSchedules = schedules.filter((s) => s.status === "ACTIVE");
+  const completedSchedules = schedules.filter((s) => s.status === "COMPLETED");
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">ติดตามการสอบ</h1>
-        <p className="text-sm text-muted-foreground">
-          ภาพรวมผู้สอบในแต่ละรอบ — กำลังสอบ, สอบเสร็จ, ไม่มาสอบ
-        </p>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : schedules.length === 0 ? (
+  const renderScheduleGrid = (items: TrackingSchedule[]) => {
+    if (items.length === 0) {
+      return (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
             <Users className="h-10 w-10 mb-3 opacity-50" />
-            <p className="font-medium">ยังไม่มีรอบสอบที่เปิดอยู่</p>
+            <p className="font-medium">ไม่มีรอบสอบ</p>
           </CardContent>
         </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {schedules.map((s) => {
+      );
+    }
+
+    return (
+      <div className="grid gap-4 md:grid-cols-2">
+        {items.map((s) => {
             const total = s.registered;
             const progressPercent = total > 0 ? Math.round((s.submitted / total) * 100) : 0;
 
@@ -153,7 +156,104 @@ export default function ExamTrackingPage() {
               </Link>
             );
           })}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">ติดตามการสอบ</h1>
+        <p className="text-sm text-muted-foreground">
+          ภาพรวมผู้สอบในแต่ละรอบ — กำลังสอบ, สอบเสร็จ, ไม่มาสอบ
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
+      ) : (
+        <Tabs defaultValue="active">
+          <TabsList>
+            <TabsTrigger value="active" className="gap-1.5">
+              <Clock className="h-4 w-4" />
+              กำลังสอบ
+              {activeSchedules.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
+                  {activeSchedules.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="completed" className="gap-1.5">
+              <CheckCircle2 className="h-4 w-4" />
+              สอบเสร็จแล้ว
+              {completedSchedules.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
+                  {completedSchedules.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="active" className="mt-4">
+            {renderScheduleGrid(activeSchedules)}
+          </TabsContent>
+          <TabsContent value="completed" className="mt-4">
+            {completedSchedules.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <CheckCircle2 className="h-10 w-10 mb-3 opacity-50" />
+                  <p className="font-medium">ยังไม่มีรอบสอบที่เสร็จสิ้น</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="pt-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>วิชา</TableHead>
+                        <TableHead>วันสอบ</TableHead>
+                        <TableHead>ศูนย์สอบ</TableHead>
+                        <TableHead className="text-center">ลงทะเบียน</TableHead>
+                        <TableHead className="text-center">สอบเสร็จ</TableHead>
+                        <TableHead className="text-center">ไม่มาสอบ</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {completedSchedules.map((s) => (
+                        <TableRow key={s.id}>
+                          <TableCell className="font-medium">{s.examTitle}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(s.startDate).toLocaleDateString("th-TH", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {s.testCenterName ?? "Online"}
+                          </TableCell>
+                          <TableCell className="text-center">{s.registered}</TableCell>
+                          <TableCell className="text-center text-green-600 font-medium">{s.submitted}</TableCell>
+                          <TableCell className="text-center text-red-600 font-medium">{s.absent}</TableCell>
+                          <TableCell>
+                            <Link href={`/admin/exams/tracking/${s.id}`}>
+                              <Badge variant="outline" className="cursor-pointer hover:bg-accent">
+                                ดูรายละเอียด
+                              </Badge>
+                            </Link>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

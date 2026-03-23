@@ -41,7 +41,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
       },
     });
 
-    // Get all sessions for this schedule
+    // Get all sessions for this schedule (score/isPassed from Grade relation)
     const sessions = await prisma.examSession.findMany({
       where: { examScheduleId: scheduleId },
       select: {
@@ -50,8 +50,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
         status: true,
         startedAt: true,
         submittedAt: true,
-        score: true,
-        isPassed: true,
+        grade: {
+          select: { totalScore: true, maxScore: true, percentage: true, isPassed: true },
+        },
       },
     });
 
@@ -76,8 +77,10 @@ export async function GET(req: NextRequest, context: RouteContext) {
         status,
         startedAt: session?.startedAt ?? null,
         submittedAt: session?.submittedAt ?? null,
-        score: session?.score ?? null,
-        isPassed: session?.isPassed ?? null,
+        score: session?.grade?.totalScore ?? null,
+        maxScore: session?.grade?.maxScore ?? null,
+        percentage: session?.grade?.percentage ?? null,
+        isPassed: session?.grade?.isPassed ?? null,
       };
     });
 
