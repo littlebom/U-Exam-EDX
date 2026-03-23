@@ -49,7 +49,7 @@ export const sidebarNav: NavItem[] = [
       { title: "ตารางสอบ", href: "/admin/exams/schedule" },
       { title: "เช็คอินวันสอบ", href: "/admin/exams/check-in" },
       { title: "บันทึกเช็คอิน", href: "/admin/exams/check-in/logs" },
-      { title: "ติดตามผู้สอบ", href: "/admin/exams/sessions" },
+      { title: "ติดตามการสอบ", href: "/admin/exams/tracking" },
     ],
   },
   {
