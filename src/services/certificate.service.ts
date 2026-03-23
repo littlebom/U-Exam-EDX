@@ -149,31 +149,41 @@ export async function issueCertificate(
     throw errors.conflict("มีใบรับรองสำหรับผลสอบนี้แล้ว");
   }
 
-  // Generate certificate number
-  const certNumber = generateCertificateNumber(tenantId);
-
   // Default expires 2 years
   const expiresAt =
     data.expiresAt ?? new Date(Date.now() + 2 * 365 * 24 * 60 * 60 * 1000);
 
-  return prisma.certificate.create({
-    data: {
-      tenantId,
-      templateId: data.templateId,
-      candidateId: data.candidateId,
-      gradeId: data.gradeId,
-      certificateNumber: certNumber,
-      issuedAt: new Date(),
-      expiresAt,
-      verificationUrl: `/verify/${certNumber}`,
-      status: "ACTIVE",
-      metadata: (data.metadata as Prisma.InputJsonValue) ?? undefined,
-    },
-    include: {
-      template: { select: { id: true, name: true } },
-      candidate: { select: { id: true, name: true } },
-    },
-  });
+  // Retry on certificate number collision (P2002)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const certNumber = generateCertificateNumber(tenantId);
+    try {
+      return await prisma.certificate.create({
+        data: {
+          tenantId,
+          templateId: data.templateId,
+          candidateId: data.candidateId,
+          gradeId: data.gradeId,
+          certificateNumber: certNumber,
+          issuedAt: new Date(),
+          expiresAt,
+          verificationUrl: `/verify/${certNumber}`,
+          status: "ACTIVE",
+          metadata: (data.metadata as Prisma.InputJsonValue) ?? undefined,
+        },
+        include: {
+          template: { select: { id: true, name: true } },
+          candidate: { select: { id: true, name: true } },
+        },
+      });
+    } catch (err) {
+      // Retry on unique constraint violation (certificate number collision)
+      if (err && typeof err === "object" && "code" in err && err.code === "P2002" && attempt < 2) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw errors.internal("ไม่สามารถสร้างเลขที่ใบรับรองได้");
 }
 
 // ─── Revoke Certificate ─────────────────────────────────────────────
@@ -241,7 +251,7 @@ export async function verifyCertificate(certificateNumber: string) {
     examTitle: cert.grade.session.examSchedule.exam.title,
     examDate: cert.grade.session.examSchedule.startDate,
     score: cert.grade.percentage,
-    status: isExpired ? "EXPIRED" : cert.status,
+    status: cert.status === "REVOKED" ? "REVOKED" : isExpired ? "EXPIRED" : cert.status,
     issuedAt: cert.issuedAt,
     expiresAt: cert.expiresAt,
   };
@@ -251,11 +261,11 @@ export async function verifyCertificate(certificateNumber: string) {
 
 export async function listCandidateCertificates(
   candidateId: string,
-  filters: { page?: number; perPage?: number } = {}
+  filters: { page?: number; perPage?: number; tenantId?: string } = {}
 ) {
-  const { page = 1, perPage = 20 } = filters;
+  const { page = 1, perPage = 20, tenantId } = filters;
 
-  const where = { candidateId };
+  const where = { candidateId, ...(tenantId && { tenantId }) };
 
   const [total, certificates] = await Promise.all([
     prisma.certificate.count({ where }),
@@ -310,9 +320,9 @@ export async function listCandidateCertificates(
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function generateCertificateNumber(tenantId: string): string {
+function generateCertificateNumber(_tenantId: string): string {
   const prefix = "CERT";
   const year = new Date().getFullYear();
-  const random = crypto.randomBytes(4).toString("hex").toUpperCase();
+  const random = crypto.randomBytes(8).toString("hex").toUpperCase();
   return `${prefix}-${year}-${random}`;
 }

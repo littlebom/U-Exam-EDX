@@ -99,8 +99,10 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Role-based access control: block CANDIDATE from admin routes
-  if (isAdminPath && isLoggedIn && isCandidate) {
+  // Role-based access control: block non-admin roles from admin routes
+  const ADMIN_ROLES = ["PLATFORM_ADMIN", "TENANT_OWNER", "ADMIN", "EXAM_CREATOR", "GRADER", "PROCTOR", "CENTER_MANAGER", "CENTER_STAFF"];
+  const hasAdminRole = ADMIN_ROLES.includes(roleName);
+  if (isAdminPath && isLoggedIn && !hasAdminRole) {
     return NextResponse.redirect(new URL("/profile", req.url));
   }
 

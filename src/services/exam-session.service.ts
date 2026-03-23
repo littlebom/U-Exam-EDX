@@ -123,7 +123,8 @@ export async function getSession(tenantId: string, sessionId: string) {
 
 export async function getSessionForCandidate(
   sessionId: string,
-  candidateId: string
+  candidateId: string,
+  tenantId?: string
 ) {
   const session = await prisma.examSession.findUnique({
     where: { id: sessionId },
@@ -132,6 +133,14 @@ export async function getSessionForCandidate(
 
   if (!session || session.candidateId !== candidateId) {
     throw errors.notFound("ไม่พบข้อมูลเซสชันสอบ");
+  }
+
+  // Tenant isolation: ตรวจว่า session อยู่ใน tenant เดียวกัน
+  if (tenantId && session.examSchedule?.exam) {
+    const examTenantId = (session.examSchedule.exam as Record<string, unknown>).tenantId;
+    if (examTenantId && examTenantId !== tenantId) {
+      throw errors.notFound("ไม่พบข้อมูลเซสชันสอบ");
+    }
   }
 
   return session;
@@ -165,61 +174,86 @@ export async function startExam(
     throw errors.validation("ชุดสอบยังไม่พร้อมใช้งาน");
   }
 
-  // Check if already has a session
-  const existing = await prisma.examSession.findUnique({
-    where: {
-      examScheduleId_candidateId: {
-        examScheduleId: data.examScheduleId,
-        candidateId,
-      },
-    },
-  });
-
-  if (existing) {
-    if (existing.status === "IN_PROGRESS") {
-      // Resume existing session
-      return getSessionForCandidate(existing.id, candidateId);
-    }
-    if (existing.status === "SUBMITTED" || existing.status === "TIMED_OUT") {
-      throw errors.conflict("คุณได้ทำข้อสอบนี้แล้ว");
-    }
-  }
-
-  // Check max candidates
-  if (schedule.maxCandidates) {
-    const currentCount = await prisma.examSession.count({
-      where: { examScheduleId: data.examScheduleId },
-    });
-    if (currentCount >= schedule.maxCandidates) {
-      throw errors.validation("จำนวนผู้สอบเต็มแล้ว");
-    }
-  }
-
-  // Create or update session
-  const session = existing
-    ? await prisma.examSession.update({
-        where: { id: existing.id },
-        data: {
-          status: "IN_PROGRESS",
-          startedAt: new Date(),
-          timeRemaining: schedule.exam.duration * 60,
-          ipAddress: data.ipAddress,
-          userAgent: data.userAgent,
-        },
-      })
-    : await prisma.examSession.create({
-        data: {
-          examScheduleId: data.examScheduleId,
-          candidateId,
-          status: "IN_PROGRESS",
-          startedAt: new Date(),
-          timeRemaining: schedule.exam.duration * 60,
-          ipAddress: data.ipAddress,
-          userAgent: data.userAgent,
+  // Use transaction to prevent race condition (double session creation)
+  let sessionId: string;
+  try {
+    sessionId = await prisma.$transaction(async (tx) => {
+      // Check if already has a session
+      const existing = await tx.examSession.findUnique({
+        where: {
+          examScheduleId_candidateId: {
+            examScheduleId: data.examScheduleId,
+            candidateId,
+          },
         },
       });
 
-  return getSessionForCandidate(session.id, candidateId);
+      if (existing) {
+        if (existing.status === "IN_PROGRESS") {
+          return existing.id; // Resume
+        }
+        if (existing.status === "SUBMITTED" || existing.status === "TIMED_OUT") {
+          throw errors.conflict("คุณได้ทำข้อสอบนี้แล้ว");
+        }
+      }
+
+      // Check max candidates
+      if (schedule.maxCandidates) {
+        const currentCount = await tx.examSession.count({
+          where: { examScheduleId: data.examScheduleId },
+        });
+        if (currentCount >= schedule.maxCandidates) {
+          throw errors.validation("จำนวนผู้สอบเต็มแล้ว");
+        }
+      }
+
+      // Create or update session
+      const session = existing
+        ? await tx.examSession.update({
+            where: { id: existing.id },
+            data: {
+              status: "IN_PROGRESS",
+              startedAt: new Date(),
+              timeRemaining: schedule.exam.duration * 60,
+              ipAddress: data.ipAddress,
+              userAgent: data.userAgent,
+            },
+          })
+        : await tx.examSession.create({
+            data: {
+              examScheduleId: data.examScheduleId,
+              candidateId,
+              status: "IN_PROGRESS",
+              startedAt: new Date(),
+              timeRemaining: schedule.exam.duration * 60,
+              ipAddress: data.ipAddress,
+              userAgent: data.userAgent,
+            },
+          });
+
+      return session.id;
+    });
+  } catch (err) {
+    // Handle unique constraint violation (P2002) from concurrent requests
+    if (err && typeof err === "object" && "code" in err && err.code === "P2002") {
+      // Another request already created the session — try to resume
+      const existing = await prisma.examSession.findUnique({
+        where: {
+          examScheduleId_candidateId: {
+            examScheduleId: data.examScheduleId,
+            candidateId,
+          },
+        },
+      });
+      if (existing?.status === "IN_PROGRESS") {
+        return getSessionForCandidate(existing.id, candidateId);
+      }
+      throw errors.conflict("คุณได้ทำข้อสอบนี้แล้ว");
+    }
+    throw err;
+  }
+
+  return getSessionForCandidate(sessionId, candidateId);
 }
 
 // ─── Submit Answer ──────────────────────────────────────────────────
@@ -425,6 +459,7 @@ export async function getSessionStatus(
     where: { id: sessionId },
     select: {
       id: true,
+      candidateId: true,
       status: true,
       startedAt: true,
       submittedAt: true,
@@ -433,7 +468,7 @@ export async function getSessionStatus(
     },
   });
 
-  if (!session) {
+  if (!session || session.candidateId !== candidateId) {
     throw errors.notFound("ไม่พบข้อมูลเซสชันสอบ");
   }
 

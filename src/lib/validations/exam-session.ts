@@ -40,13 +40,15 @@ export const flagQuestionSchema = z.object({
 
 // ─── Auto-save (batch) ─────────────────────────────────────────────
 export const autoSaveSchema = z.object({
-  answers: z.array(
-    z.object({
-      questionId: z.string().uuid(),
-      answer: z.unknown().optional(),
-      timeSpent: z.number().int().min(0).optional(),
-    })
-  ),
+  answers: z
+    .array(
+      z.object({
+        questionId: z.string().uuid(),
+        answer: z.unknown().optional(),
+        timeSpent: z.number().int().min(0).optional(),
+      })
+    )
+    .max(500),
   timeRemaining: z.number().int().min(0).optional(),
 });
 

@@ -17,7 +17,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      allowDangerousEmailAccountLinking: true,
+      // Removed allowDangerousEmailAccountLinking — account linking handled in signIn callback
     }),
     Credentials({
       credentials: {
@@ -34,7 +34,8 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           where: { email: email.toLowerCase() },
         });
 
-        const authIpEarly = (globalThis as Record<string, unknown>).__lastAuthIp as string | null;
+        // IP is not available in authorize() — logged at middleware/route level instead
+        const authIpEarly: string | null = null;
 
         if (!user || !user.passwordHash) {
           const { logAuthEvent } = await import("@/services/audit-log.service");
@@ -57,7 +58,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
         // Log successful login
         const { logAuthEvent } = await import("@/services/audit-log.service");
-        const authIp = (globalThis as Record<string, unknown>).__lastAuthIp as string | null;
+        const authIp: string | null = null; // IP logged at route level
         logAuthEvent("AUTH_LOGIN", {
           userId: user.id,
           ipAddress: authIp,

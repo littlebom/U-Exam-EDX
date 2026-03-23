@@ -164,8 +164,8 @@ export async function getGradingQueue(
     ...(questionType && {
       answer: { question: { type: questionType } },
     }),
-    ...(status === "pending" && { score: 0, feedback: null }),
-    ...(status === "graded" && { feedback: { not: null } }),
+    ...(status === "pending" && { gradedById: null }),
+    ...(status === "graded" && { gradedById: { not: null } }),
   };
 
   const [data, total] = await Promise.all([
@@ -334,7 +334,7 @@ async function recalculateGrade(
 
   // Check if all manual items are graded
   const ungradedManual = gradeAnswers.filter(
-    (ga) => !ga.isAutoGraded && ga.feedback === null && ga.score === 0
+    (ga) => !ga.isAutoGraded && ga.gradedById === null
   );
 
   const grade = await tx.grade.findUnique({
@@ -511,17 +511,17 @@ export async function publishGrade(tenantId: string, gradeId: string) {
 // ─── Publish Multiple Grades ────────────────────────────────────────
 
 export async function bulkPublishGrades(tenantId: string, gradeIds: string[]) {
-  return prisma.grade.updateMany({
-    where: {
-      id: { in: gradeIds },
-      tenantId,
-      status: "COMPLETED",
-    },
-    data: {
-      status: "PUBLISHED",
-      publishedAt: new Date(),
-    },
-  });
+  // Use publishGrade for each to trigger notifications + auto-certificate
+  const results = [];
+  for (const gradeId of gradeIds) {
+    try {
+      const result = await publishGrade(tenantId, gradeId);
+      results.push(result);
+    } catch (err) {
+      console.error(`[bulkPublish] Failed to publish grade ${gradeId}:`, err);
+    }
+  }
+  return { count: results.length };
 }
 
 // ─── Grading Stats ──────────────────────────────────────────────────

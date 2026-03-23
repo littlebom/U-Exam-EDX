@@ -59,13 +59,13 @@ interface ExamStore {
   // Exam state
   currentIndex: number;
   answers: Record<string, unknown>;
-  flagged: Set<string>;
+  flagged: Record<string, boolean>;
   timeRemaining: number;
   isSubmitting: boolean;
   isSubmitted: boolean;
 
   // Auto-save tracking
-  dirtyAnswers: Set<string>; // question IDs with unsaved changes
+  dirtyAnswers: Record<string, boolean>; // question IDs with unsaved changes
   lastSaveAt: number | null;
 
   // Actions
@@ -92,11 +92,11 @@ export const useExamStore = create<ExamStore>((set, get) => ({
   error: null,
   currentIndex: 0,
   answers: {},
-  flagged: new Set(),
+  flagged: {},
   timeRemaining: 0,
   isSubmitting: false,
   isSubmitted: false,
-  dirtyAnswers: new Set(),
+  dirtyAnswers: {},
   lastSaveAt: null,
 
   setSession: (session) => {
@@ -132,21 +132,19 @@ export const useExamStore = create<ExamStore>((set, get) => ({
 
   setAnswer: (questionId, answer) => {
     const { answers, dirtyAnswers } = get();
-    const newDirty = new Set(dirtyAnswers);
-    newDirty.add(questionId);
     set({
       answers: { ...answers, [questionId]: answer },
-      dirtyAnswers: newDirty,
+      dirtyAnswers: { ...dirtyAnswers, [questionId]: true },
     });
   },
 
   toggleFlag: (questionId) => {
     const { flagged } = get();
-    const next = new Set(flagged);
-    if (next.has(questionId)) {
-      next.delete(questionId);
+    const next = { ...flagged };
+    if (next[questionId]) {
+      delete next[questionId];
     } else {
-      next.add(questionId);
+      next[questionId] = true;
     }
     set({ flagged: next });
   },
@@ -161,7 +159,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
   setSubmitting: (isSubmitting) => set({ isSubmitting }),
   setSubmitted: () => set({ isSubmitted: true, isSubmitting: false }),
 
-  markSaved: () => set({ dirtyAnswers: new Set(), lastSaveAt: Date.now() }),
+  markSaved: () => set({ dirtyAnswers: {}, lastSaveAt: Date.now() }),
 
   reset: () =>
     set({
@@ -171,11 +169,11 @@ export const useExamStore = create<ExamStore>((set, get) => ({
       error: null,
       currentIndex: 0,
       answers: {},
-      flagged: new Set(),
+      flagged: {},
       timeRemaining: 0,
       isSubmitting: false,
       isSubmitted: false,
-      dirtyAnswers: new Set(),
+      dirtyAnswers: {},
       lastSaveAt: null,
     }),
 }));

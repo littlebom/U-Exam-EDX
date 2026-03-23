@@ -14,9 +14,11 @@ export async function GET(req: NextRequest) {
     }
 
     const url = new URL(req.url);
+    const tenantId = (session.user as Record<string, unknown>).tenantId as string | undefined;
     const result = await listCandidateCertificates(session.user.id, {
       page: parseInt(url.searchParams.get("page") ?? "1", 10),
       perPage: parseInt(url.searchParams.get("perPage") ?? "20", 10),
+      tenantId,
     });
 
     return NextResponse.json({ success: true, ...result });

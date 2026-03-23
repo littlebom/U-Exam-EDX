@@ -121,7 +121,8 @@ export async function processRefund(
       try {
         const stripeRefund = await stripe.refunds.create({
           payment_intent: payment.transactionId,
-          amount: Math.round(refund.amount * 100), // THB → satang
+          // THB is a zero-decimal currency in Stripe — no * 100
+          amount: Math.round(refund.amount),
         });
         stripeRefundId = stripeRefund.id;
       } catch (err) {

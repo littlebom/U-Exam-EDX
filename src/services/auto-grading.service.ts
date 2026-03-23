@@ -317,11 +317,16 @@ export async function autoGradeSession(
           isAutoGraded: result.isAutoGraded,
           isCorrect: result.isAutoGraded ? result.isCorrect : null,
         },
-        update: {
-          score: result.isAutoGraded ? result.score : undefined,
-          isAutoGraded: result.isAutoGraded,
-          isCorrect: result.isAutoGraded ? result.isCorrect : undefined,
-        },
+        update: result.isAutoGraded
+          ? {
+              score: result.score,
+              isAutoGraded: true,
+              isCorrect: result.isCorrect,
+            }
+          : {
+              // Don't overwrite manually graded scores on re-run
+              maxScore: result.maxScore,
+            },
       });
     }
 

@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // 2. Check time window for online exam
+    // 2. Check time window for ALL exam types (online + onsite)
     const schedule = await prisma.examSchedule.findUnique({
       where: { id: id },
       select: {
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       },
     });
 
-    if (schedule && !schedule.testCenterId) {
+    if (schedule) {
       const now = new Date();
       if (now < schedule.startDate) {
         throw new AppError("VALIDATION_ERROR", "ยังไม่ถึงเวลาเข้าสอบ", 400);

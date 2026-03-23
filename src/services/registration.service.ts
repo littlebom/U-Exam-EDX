@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import type { Prisma } from "@/generated/prisma";
 import type {
   CreateRegistration,
   UpdateRegistration,
@@ -32,7 +33,7 @@ export async function listRegistrations(tenantId: string, filters: RegistrationF
 
   const [data, total] = await Promise.all([
     prisma.registration.findMany({
-      where: where as any,
+      where: where as Prisma.RegistrationWhereInput,
       include: {
         candidate: { select: { id: true, name: true, email: true } },
         examSchedule: {
@@ -49,7 +50,7 @@ export async function listRegistrations(tenantId: string, filters: RegistrationF
       skip: (page - 1) * perPage,
       take: perPage,
     }),
-    prisma.registration.count({ where: where as any }),
+    prisma.registration.count({ where: where as Prisma.RegistrationWhereInput }),
   ]);
 
   return {
@@ -267,7 +268,7 @@ export async function listCatalog(filters: CatalogFilter) {
 
   const [data, total] = await Promise.all([
     prisma.examSchedule.findMany({
-      where: where as any,
+      where: where as Prisma.RegistrationWhereInput,
       include: {
         exam: {
           select: {
@@ -290,7 +291,7 @@ export async function listCatalog(filters: CatalogFilter) {
       skip: (page - 1) * perPage,
       take: perPage,
     }),
-    prisma.examSchedule.count({ where: where as any }),
+    prisma.examSchedule.count({ where: where as Prisma.ExamScheduleWhereInput }),
   ]);
 
   return {

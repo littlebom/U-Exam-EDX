@@ -99,11 +99,21 @@ export function isValidIpOrCidr(value: string): boolean {
 
 /**
  * ดึง client IP จาก request headers
+ *
+ * ⚠️ Security: X-Forwarded-For สามารถถูก spoof ได้ถ้าไม่ผ่าน trusted proxy
+ * ในการใช้งานจริง ควร deploy ผ่าน reverse proxy (Nginx, Cloudflare) ที่ strip/set
+ * X-Forwarded-For ให้ถูกต้อง — proxy ควรตั้งค่า x-real-ip เป็น IP จริง
+ *
+ * ลำดับการอ่าน: x-real-ip (trusted proxy) → x-forwarded-for (ตัวแรก) → undefined
  */
 export function getClientIp(request: Request): string | undefined {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0].trim() ??
-    request.headers.get("x-real-ip") ??
-    undefined
-  );
+  // Prefer x-real-ip (usually set by trusted reverse proxy)
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+
+  // Fallback to x-forwarded-for (first entry = original client)
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0].trim();
+
+  return undefined;
 }

@@ -255,7 +255,7 @@ export function useProctoring({
 
   // ── SSE: listen for proctor messages & force-submit ──
   useEffect(() => {
-    if (!enabled || !examSessionId) return;
+    if (!enabled || !examSessionId || !settings?.enabled) return;
 
     const eventSource = new EventSource(
       `/api/v1/profile/exam-sessions/${examSessionId}/proctoring/stream`

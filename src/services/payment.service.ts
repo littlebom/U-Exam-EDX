@@ -161,7 +161,7 @@ export async function processPayment(
   }
 
   // Use transaction: mark payment as COMPLETED + update registration paymentStatus
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const updatedPayment = await tx.payment.update({
       where: { id },
       data: {
@@ -178,9 +178,9 @@ export async function processPayment(
       data: { paymentStatus: "PAID" },
     });
 
-    // Auto-generate invoice
-    const invoiceCount = await tx.invoice.count({ where: { tenantId } });
-    const invoiceNumber = `INV-${new Date().getFullYear()}-${String(invoiceCount + 1).padStart(4, "0")}`;
+    // Auto-generate invoice with crypto-safe unique number
+    const crypto = await import("crypto");
+    const invoiceNumber = `INV-${new Date().getFullYear()}-${crypto.randomBytes(6).toString("hex").toUpperCase()}`;
 
     await tx.invoice.create({
       data: {
@@ -202,38 +202,40 @@ export async function processPayment(
       },
     });
 
-    // Send notification to candidate
-    try {
-      const paymentWithDetails = await tx.payment.findUniqueOrThrow({
-        where: { id },
-        include: {
-          registration: {
-            select: {
-              examSchedule: {
-                select: { exam: { select: { title: true } } },
-              },
+    return updatedPayment;
+  });
+
+  // Send notification OUTSIDE transaction (non-critical)
+  try {
+    const paymentWithDetails = await prisma.payment.findUniqueOrThrow({
+      where: { id },
+      include: {
+        registration: {
+          select: {
+            examSchedule: {
+              select: { exam: { select: { title: true } } },
             },
           },
         },
-      });
+      },
+    });
 
-      const examTitle =
-        paymentWithDetails.registration.examSchedule.exam.title;
+    const examTitle =
+      paymentWithDetails.registration.examSchedule.exam.title;
 
-      await sendNotification({
-        tenantId,
-        userId: updatedPayment.candidateId,
-        type: "PAYMENT_COMPLETED",
-        title: "ชำระเงินสำเร็จ",
-        message: `การชำระเงินค่าสมัครสอบ "${examTitle}" จำนวน ${updatedPayment.amount} บาท เสร็จสมบูรณ์แล้ว`,
-        link: "/profile/wallet",
-      });
-    } catch {
-      // Non-critical: don't fail payment if notification fails
-    }
+    await sendNotification({
+      tenantId,
+      userId: result.candidateId,
+      type: "PAYMENT_COMPLETED",
+      title: "ชำระเงินสำเร็จ",
+      message: `การชำระเงินค่าสมัครสอบ "${examTitle}" จำนวน ${result.amount} บาท เสร็จสมบูรณ์แล้ว`,
+      link: "/profile/wallet",
+    });
+  } catch {
+    // Non-critical: don't fail if notification fails
+  }
 
-    return updatedPayment;
-  });
+  return result;
 }
 
 // ─── Payment Stats ──────────────────────────────────────────────────

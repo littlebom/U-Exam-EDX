@@ -18,6 +18,21 @@ export async function GET(req: NextRequest) {
     const candidateId = url.searchParams.get("candidateId") ?? "";
     const examId = url.searchParams.get("examId") ?? "";
 
+    // UUID format validation
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (candidateId && !uuidRegex.test(candidateId)) {
+      return NextResponse.json(
+        { success: false, error: { message: "Invalid candidateId format" } },
+        { status: 400 }
+      );
+    }
+    if (examId && !uuidRegex.test(examId)) {
+      return NextResponse.json(
+        { success: false, error: { message: "Invalid examId format" } },
+        { status: 400 }
+      );
+    }
+
     // ─── Step 1: Search candidates ─────────────────────────────────
     if (candidateQuery && candidateQuery.length >= 2) {
       const candidates = await prisma.user.findMany({

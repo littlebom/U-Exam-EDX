@@ -220,15 +220,15 @@ export default function ExamTakingPage({
   const performAutoSave = useCallback(async () => {
     const { dirtyAnswers, answers, timeRemaining } = useExamStore.getState();
     const sid = sessionIdRef.current;
-    if (!sid || dirtyAnswers.size === 0) return;
+    if (!sid || Object.keys(dirtyAnswers).length === 0) return;
 
     try {
-      const answersToSave = Array.from(dirtyAnswers).map((qId) => ({
+      const answersToSave = Object.keys(dirtyAnswers).map((qId) => ({
         questionId: qId,
         answer: answers[qId],
       }));
 
-      await fetch(`/api/v1/profile/exam-sessions/${sid}/answers`, {
+      const res = await fetch(`/api/v1/profile/exam-sessions/${sid}/answers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -236,6 +236,16 @@ export default function ExamTakingPage({
           timeRemaining,
         }),
       });
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        // Server detected time expired — force submit
+        if (res.status === 403 || json?.error?.code === "TIME_EXPIRED") {
+          handleTimeout();
+          return;
+        }
+        throw new Error("Auto-save failed");
+      }
 
       markSaved();
     } catch {
@@ -282,11 +292,16 @@ export default function ExamTakingPage({
       setViolationCount(newCount);
 
       if (newCount >= MAX_VIOLATIONS) {
+        // Guard against double-submit
+        const { isSubmitting, isSubmitted: alreadySubmitted } = useExamStore.getState();
+        if (isSubmitting || alreadySubmitted) return;
+
         // Terminate exam
         setIsTerminated(true);
         exitFullscreen();
         await performAutoSave();
         try {
+          setSubmitting(true);
           await fetch(`/api/v1/profile/exam-sessions/${sid}/submit`, {
             method: "POST",
           });
@@ -465,7 +480,7 @@ export default function ExamTakingPage({
       const sid = sessionIdRef.current;
       const q = questions[currentIndex];
       if (sid) {
-        const isFlagged = !flagged.has(q.id);
+        const isFlagged = !flagged[q.id];
         fetch(`/api/v1/profile/exam-sessions/${sid}/answers`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -710,7 +725,7 @@ export default function ExamTakingPage({
           <h1 className="text-sm font-semibold sm:text-base truncate max-w-[300px]">
             {examTitle}
           </h1>
-          {dirtyAnswers.size > 0 && (
+          {Object.keys(dirtyAnswers).length > 0 && (
             <Badge variant="outline" className="text-[10px] text-muted-foreground">
               ยังไม่บันทึก
             </Badge>
@@ -784,17 +799,17 @@ export default function ExamTakingPage({
               </div>
 
               <Button
-                variant={flagged.has(currentQ.id) ? "default" : "outline"}
+                variant={flagged[currentQ.id] ? "default" : "outline"}
                 size="sm"
                 onClick={handleFlag}
                 className={cn(
                   "gap-1.5",
-                  flagged.has(currentQ.id) &&
+                  flagged[currentQ.id] &&
                     "bg-amber-500 text-white hover:bg-amber-600"
                 )}
               >
                 <Flag className="h-4 w-4" />
-                {flagged.has(currentQ.id) ? "ยกเลิกทำเครื่องหมาย" : "ทำเครื่องหมาย"}
+                {flagged[currentQ.id] ? "ยกเลิกทำเครื่องหมาย" : "ทำเครื่องหมาย"}
               </Button>
             </div>
 
@@ -872,7 +887,7 @@ export default function ExamTakingPage({
                     answers[q.id] !== null &&
                     answers[q.id] !== "";
                   const isCurrent = i === currentIndex;
-                  const isFlagged = flagged.has(q.id);
+                  const isFlagged = flagged[q.id];
 
                   return (
                     <button
