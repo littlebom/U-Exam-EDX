@@ -64,11 +64,19 @@ export async function sendNotification(params: {
   message: string;
   link?: string;
 }) {
-  // Check user preferences
-  const { isChannelEnabled } = await import("@/services/notification-preference.service");
+  // Check user preferences — single query for both channels
+  const pref = await prisma.notificationPreference.findUnique({
+    where: {
+      userId_type: { userId: params.userId, type: params.type },
+    },
+    select: { inApp: true, email: true },
+  });
+
+  // Default: both enabled if no preference record exists
+  const inAppEnabled = pref?.inApp ?? true;
+  const emailEnabled = pref?.email ?? true;
 
   // 1. Create in-app notification (if enabled)
-  const inAppEnabled = await isChannelEnabled(params.userId, params.type, "inApp");
   let notification = null;
   if (inAppEnabled) {
     notification = await prisma.notification.create({
@@ -77,7 +85,6 @@ export async function sendNotification(params: {
   }
 
   // 2. Send email (if enabled, non-blocking)
-  const emailEnabled = await isChannelEnabled(params.userId, params.type, "email");
   if (emailEnabled) {
     sendNotificationEmail(params).catch((err) =>
       console.error("[notification-email] error:", err)

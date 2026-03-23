@@ -41,16 +41,36 @@ async function _getOverviewStats(tenantId: string, filters: OverviewFilter) {
     ...buildDateFilter(dateFrom, dateTo),
   };
 
-  // Get all completed/published grades
-  const grades = await prisma.grade.findMany({
-    where: gradeWhere,
-    select: {
-      totalScore: true,
-      maxScore: true,
-      percentage: true,
-      isPassed: true,
-    },
-  });
+  // Use aggregate instead of loading all rows into memory
+  const [agg, passAgg] = await Promise.all([
+    prisma.grade.aggregate({
+      where: gradeWhere,
+      _count: true,
+      _avg: { percentage: true },
+      _min: { percentage: true },
+      _max: { percentage: true },
+    }),
+    prisma.grade.count({
+      where: { ...gradeWhere, isPassed: true },
+    }),
+  ]);
+
+  // For median + stddev, use raw SQL (much cheaper than loading all rows)
+  const statsResult = await prisma.$queryRaw<
+    Array<{ median: number | null; stddev: number | null }>
+  >`
+    SELECT
+      PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY percentage) AS median,
+      STDDEV_POP(percentage) AS stddev
+    FROM "Grade"
+    WHERE "tenantId" = ${tenantId}
+      AND status IN ('COMPLETED', 'PUBLISHED')
+      ${examId ? prisma.$queryRaw`AND "sessionId" IN (
+        SELECT es.id FROM "ExamSession" es
+        JOIN "ExamSchedule" esc ON es."examScheduleId" = esc.id
+        WHERE esc."examId" = ${examId}
+      )` : prisma.$queryRaw``}
+  `.catch(() => [{ median: null, stddev: null }]);
 
   // Count exams with completed sessions
   const examCount = await prisma.exam.count({
@@ -88,55 +108,23 @@ async function _getOverviewStats(tenantId: string, filters: OverviewFilter) {
   });
 
   const totalCandidates = candidateCount.length;
-  const totalGrades = grades.length;
-
-  if (totalGrades === 0) {
-    return {
-      totalExams: examCount,
-      totalCandidates,
-      averagePassRate: 0,
-      averageScore: 0,
-      passCount: 0,
-      failCount: 0,
-      highestScore: 0,
-      lowestScore: 0,
-      medianScore: 0,
-      standardDeviation: 0,
-    };
-  }
-
-  const passCount = grades.filter((g) => g.isPassed).length;
+  const totalGrades = agg._count;
+  const passCount = passAgg;
   const failCount = totalGrades - passCount;
-  const averagePassRate = (passCount / totalGrades) * 100;
-
-  const percentages = grades.map((g) => g.percentage).sort((a, b) => a - b);
-  const averageScore = percentages.reduce((s, v) => s + v, 0) / totalGrades;
-  const highestScore = percentages[percentages.length - 1];
-  const lowestScore = percentages[0];
-
-  // Median
-  const mid = Math.floor(totalGrades / 2);
-  const medianScore =
-    totalGrades % 2 !== 0
-      ? percentages[mid]
-      : (percentages[mid - 1] + percentages[mid]) / 2;
-
-  // Standard deviation
-  const variance =
-    percentages.reduce((sum, v) => sum + Math.pow(v - averageScore, 2), 0) / totalGrades;
-  const standardDeviation = Math.sqrt(variance);
+  const averagePassRate = totalGrades > 0 ? (passCount / totalGrades) * 100 : 0;
+  const stats = statsResult[0] ?? { median: null, stddev: null };
 
   return {
     totalExams: examCount,
     totalCandidates,
     averagePassRate: Math.round(averagePassRate * 100) / 100,
-    averageScore: Math.round(averageScore * 100) / 100,
+    averageScore: Math.round((agg._avg.percentage ?? 0) * 100) / 100,
     passCount,
     failCount,
-    highestScore: Math.round(highestScore * 100) / 100,
-    lowestScore: Math.round(lowestScore * 100) / 100,
-    medianScore: Math.round(medianScore * 100) / 100,
-    standardDeviation: Math.round(standardDeviation * 100) / 100,
+    highestScore: Math.round((agg._max.percentage ?? 0) * 100) / 100,
+    lowestScore: Math.round((agg._min.percentage ?? 0) * 100) / 100,
+    medianScore: Math.round((Number(stats.median) || 0) * 100) / 100,
+    standardDeviation: Math.round((Number(stats.stddev) || 0) * 100) / 100,
   };
 }
 
@@ -148,43 +136,46 @@ export async function getScoreDistribution(
 ) {
   const { examId, buckets, dateFrom, dateTo } = filters;
 
-  const grades = await prisma.grade.findMany({
-    where: {
-      tenantId,
-      status: { in: ["COMPLETED", "PUBLISHED"] },
-      ...(examId && {
-        session: {
-          examSchedule: { examId },
-        },
-      }),
-      ...buildDateFilter(dateFrom, dateTo),
-    },
-    select: {
-      percentage: true,
-    },
-  });
+  // Use aggregate count instead of loading all rows
+  const gradeWhere = {
+    tenantId,
+    status: { in: ["COMPLETED" as const, "PUBLISHED" as const] },
+    ...(examId && {
+      session: {
+        examSchedule: { examId },
+      },
+    }),
+    ...buildDateFilter(dateFrom, dateTo),
+  };
 
-  // Build distribution buckets
+  const totalCount = await prisma.grade.count({ where: gradeWhere });
+
+  // Build distribution using individual count queries per bucket (much cheaper than loading all rows)
   const bucketSize = 100 / buckets;
   const distribution: Array<{ range: string; count: number; percentage: number }> = [];
 
   for (let i = 0; i < buckets; i++) {
     const low = Math.round(i * bucketSize);
     const high = Math.round((i + 1) * bucketSize);
-    const rangeLabel = `${low}-${high}%`;
-    const count = grades.filter(
-      (g) => g.percentage >= low && (i === buckets - 1 ? g.percentage <= high : g.percentage < high)
-    ).length;
+    const count = await prisma.grade.count({
+      where: {
+        ...gradeWhere,
+        percentage: {
+          gte: low,
+          ...(i === buckets - 1 ? { lte: high } : { lt: high }),
+        },
+      },
+    });
 
     distribution.push({
-      range: rangeLabel,
+      range: `${low}-${high}%`,
       count,
-      percentage: grades.length > 0 ? Math.round((count / grades.length) * 1000) / 10 : 0,
+      percentage: totalCount > 0 ? Math.round((count / totalCount) * 1000) / 10 : 0,
     });
   }
 
   return {
-    total: grades.length,
+    total: totalCount,
     distribution,
   };
 }
@@ -366,63 +357,51 @@ async function _getMonthlyTrends(tenantId: string, filters: TrendFilter) {
   const endDate = dateTo ?? new Date();
   const startDate = dateFrom ?? new Date(new Date().setMonth(new Date().getMonth() - months));
 
-  // Get all grades within the date range
-  const grades = await prisma.grade.findMany({
-    where: {
-      tenantId,
-      status: { in: ["COMPLETED", "PUBLISHED"] },
-      ...(examId && {
-        session: {
-          examSchedule: { examId },
-        },
-      }),
-      session: {
-        submittedAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-        ...(examId && {
-          examSchedule: { examId },
-        }),
-      },
-    },
-    select: {
-      percentage: true,
-      isPassed: true,
-      session: {
-        select: {
-          submittedAt: true,
-          examScheduleId: true,
-        },
-      },
-    },
-  });
+  // Use raw SQL to aggregate by month — avoids loading all rows into memory
+  type MonthlyRow = {
+    month: string;
+    total_candidates: bigint;
+    pass_count: bigint;
+    avg_score: number | null;
+    exam_count: bigint;
+  };
 
-  // Group by month
-  const monthlyMap = new Map<
-    string,
-    { grades: Array<{ percentage: number; isPassed: boolean }>; examScheduleIds: Set<string> }
-  >();
+  const monthlyData = await prisma.$queryRaw<MonthlyRow[]>`
+    SELECT
+      TO_CHAR(es."submittedAt", 'YYYY-MM') AS month,
+      COUNT(*)::bigint AS total_candidates,
+      COUNT(*) FILTER (WHERE g."isPassed" = true)::bigint AS pass_count,
+      AVG(g.percentage) AS avg_score,
+      COUNT(DISTINCT es."examScheduleId")::bigint AS exam_count
+    FROM "Grade" g
+    JOIN "ExamSession" es ON g."sessionId" = es.id
+    JOIN "ExamSchedule" esc ON es."examScheduleId" = esc.id
+    WHERE g."tenantId" = ${tenantId}
+      AND g.status IN ('COMPLETED', 'PUBLISHED')
+      AND es."submittedAt" >= ${startDate}
+      AND es."submittedAt" <= ${endDate}
+      ${examId ? prisma.$queryRaw`AND esc."examId" = ${examId}` : prisma.$queryRaw``}
+    GROUP BY TO_CHAR(es."submittedAt", 'YYYY-MM')
+    ORDER BY month
+  `.catch(() => [] as MonthlyRow[]);
 
-  // Pre-fill all months
+  // Build monthly map with pre-filled months
+  const monthlyMap = new Map<string, { totalCandidates: number; passCount: number; avgScore: number; examCount: number }>();
+
   for (let i = 0; i < months; i++) {
     const d = new Date();
     d.setMonth(d.getMonth() - (months - 1 - i));
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    monthlyMap.set(key, { grades: [], examScheduleIds: new Set() });
+    monthlyMap.set(key, { totalCandidates: 0, passCount: 0, avgScore: 0, examCount: 0 });
   }
 
-  for (const grade of grades) {
-    if (!grade.session.submittedAt) continue;
-    const d = grade.session.submittedAt;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-
-    if (!monthlyMap.has(key)) {
-      monthlyMap.set(key, { grades: [], examScheduleIds: new Set() });
-    }
-    const entry = monthlyMap.get(key)!;
-    entry.grades.push({ percentage: grade.percentage, isPassed: grade.isPassed });
-    entry.examScheduleIds.add(grade.session.examScheduleId);
+  for (const row of monthlyData) {
+    monthlyMap.set(row.month, {
+      totalCandidates: Number(row.total_candidates),
+      passCount: Number(row.pass_count),
+      avgScore: Number(row.avg_score) || 0,
+      examCount: Number(row.exam_count),
+    });
   }
 
   // Thai month labels
@@ -438,21 +417,17 @@ async function _getMonthlyTrends(tenantId: string, filters: TrendFilter) {
       const monthIndex = parseInt(monthNum, 10) - 1;
       const label = `${thaiMonths[monthIndex]} ${year}`;
 
-      const totalGrades = data.grades.length;
-      const passCount = data.grades.filter((g) => g.isPassed).length;
-      const averagePassRate = totalGrades > 0 ? (passCount / totalGrades) * 100 : 0;
-      const averageScore =
-        totalGrades > 0
-          ? data.grades.reduce((s, g) => s + g.percentage, 0) / totalGrades
-          : 0;
+      const averagePassRate = data.totalCandidates > 0
+        ? (data.passCount / data.totalCandidates) * 100
+        : 0;
 
       return {
         month,
         label,
-        totalExams: data.examScheduleIds.size,
-        totalCandidates: totalGrades,
+        totalExams: data.examCount,
+        totalCandidates: data.totalCandidates,
         averagePassRate: Math.round(averagePassRate * 100) / 100,
-        averageScore: Math.round(averageScore * 100) / 100,
+        averageScore: Math.round(data.avgScore * 100) / 100,
       };
     });
 

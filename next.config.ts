@@ -29,7 +29,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // Next.js requires unsafe-eval in dev, unsafe-inline for inline scripts
+      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV !== "production" ? " 'unsafe-eval'" : ""}`, // unsafe-eval only in dev (Next.js HMR)
       "style-src 'self' 'unsafe-inline'", // TailwindCSS requires unsafe-inline
       "img-src 'self' blob: data: https:",
       "font-src 'self' data:",

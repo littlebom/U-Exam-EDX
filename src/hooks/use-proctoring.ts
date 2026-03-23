@@ -43,6 +43,7 @@ export function useProctoring({
   const faceDetectionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const noFaceCountRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // ── Screenshot mode helpers ──
   const screenshotMode = settings?.screenshotMode ?? "both";
@@ -134,9 +135,13 @@ export function useProctoring({
       if (!videoRef.current || !proctoringSessionId) return;
 
       try {
-        const canvas = document.createElement("canvas");
-        canvas.width = 640;
-        canvas.height = 480;
+        // Reuse canvas to avoid GC pressure
+        if (!canvasRef.current) {
+          canvasRef.current = document.createElement("canvas");
+          canvasRef.current.width = 640;
+          canvasRef.current.height = 480;
+        }
+        const canvas = canvasRef.current;
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 

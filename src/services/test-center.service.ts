@@ -46,21 +46,23 @@ export async function listTestCenters(tenantId: string, filters: TestCenterFilte
     prisma.testCenter.count({ where }),
   ]);
 
-  // Calculate total capacity per center
-  const centersWithCapacity = await Promise.all(
-    data.map(async (center) => {
-      const capacity = await prisma.room.aggregate({
-        where: { testCenterId: center.id },
+  // Batch capacity lookup — single query instead of N
+  const centerIds = data.map((c) => c.id);
+  const capacities = centerIds.length > 0
+    ? await prisma.room.groupBy({
+        by: ["testCenterId"],
+        where: { testCenterId: { in: centerIds } },
         _sum: { capacity: true },
-      });
-      return {
-        ...center,
-        totalCapacity: capacity._sum.capacity ?? 0,
-        roomsCount: center._count.rooms,
-        buildingsCount: center._count.buildings,
-      };
-    })
-  );
+      })
+    : [];
+  const capacityMap = new Map(capacities.map((c) => [c.testCenterId, c._sum.capacity ?? 0]));
+
+  const centersWithCapacity = data.map((center) => ({
+    ...center,
+    totalCapacity: capacityMap.get(center.id) ?? 0,
+    roomsCount: center._count.rooms,
+    buildingsCount: center._count.buildings,
+  }));
 
   return {
     data: centersWithCapacity,

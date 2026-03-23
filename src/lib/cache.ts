@@ -1,5 +1,7 @@
 import { redis } from "./redis";
 
+let connected = false;
+
 /**
  * Cache wrapper — returns cached data if available, otherwise runs fn() and caches the result.
  * Falls back to running fn() directly if Redis is unavailable.
@@ -12,7 +14,11 @@ export async function cached<T>(
   if (!redis) return fn();
 
   try {
-    await redis.connect().catch(() => {});
+    // Connect once, not on every call
+    if (!connected) {
+      await redis.connect().catch(() => {});
+      connected = true;
+    }
     const cached = await redis.get(key);
     if (cached) {
       return JSON.parse(cached) as T;

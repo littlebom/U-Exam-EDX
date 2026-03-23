@@ -226,6 +226,7 @@ model Notification {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, isRead])
   @@index([tenantId])
   @@map("notifications")
 }
@@ -745,6 +746,7 @@ model ExamAnswer {
 
   @@unique([sessionId, questionId])
   @@index([sessionId])
+  @@index([sessionId, isFlagged])
   @@map("exam_answers")
 }
 
@@ -798,6 +800,7 @@ model Grade {
 
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([tenantId, publishedAt])
   @@map("grades")
 }
 
@@ -1754,6 +1757,7 @@ model AuditLog {
   user   User?   @relation("AuditLogs", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
+  @@index([tenantId, createdAt])
   @@index([userId])
   @@index([action])
   @@index([category])
