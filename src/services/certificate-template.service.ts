@@ -30,6 +30,7 @@ export async function listCertificateTemplates(
     data: templates.map((t) => ({
       id: t.id,
       name: t.name,
+      design: t.design,
       isDefault: t.isDefault,
       isActive: t.isActive,
       certificateCount: t._count.certificates,

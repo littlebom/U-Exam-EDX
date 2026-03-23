@@ -165,16 +165,32 @@ export default function ExamResultsPage() {
                         {result.percentage ?? 0}%
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge
-                          variant="secondary"
-                          className={
-                            result.isPassed
-                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                              : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                          }
-                        >
-                          {result.isPassed ? "ผ่าน" : "ไม่ผ่าน"}
-                        </Badge>
+                        {result.status === "GRADING" || result.status === "DRAFT" ? (
+                          <Badge
+                            variant="secondary"
+                            className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                          >
+                            รอตรวจข้อเขียน
+                          </Badge>
+                        ) : result.status === "COMPLETED" ? (
+                          <Badge
+                            variant="secondary"
+                            className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                          >
+                            รอประกาศผล
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="secondary"
+                            className={
+                              result.isPassed
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                            }
+                          >
+                            {result.isPassed ? "ผ่าน" : "ไม่ผ่าน"}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right text-sm text-muted-foreground">
                         {formatDate(result.examDate)}

@@ -132,8 +132,12 @@ export const simpleRandomSchema = z.object({
 export type SimpleRandomInput = z.infer<typeof simpleRandomSchema>;
 
 // ── Schedule Schemas ───────────────────────────────
+export const ExamType = z.enum(["ONLINE", "ONSITE"]);
+export type ExamType = z.infer<typeof ExamType>;
+
 export const createScheduleSchema = z.object({
   examId: z.string().uuid(),
+  examType: ExamType.default("ONSITE"),
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   registrationOpenDate: z.coerce.date().nullable().optional(),
@@ -142,6 +146,8 @@ export const createScheduleSchema = z.object({
   location: z.string().max(500).nullable().optional(),
   testCenterId: z.string().uuid().nullable().optional(),
   roomId: z.string().uuid().nullable().optional(),
+  registrationFee: z.number().min(0).default(0),
+  settings: z.record(z.string(), z.unknown()).nullable().optional(),
 }).refine((data) => data.endDate > data.startDate, {
   message: "วันสิ้นสุดต้องอยู่หลังวันเริ่มต้น",
   path: ["endDate"],
@@ -149,6 +155,7 @@ export const createScheduleSchema = z.object({
 export type CreateScheduleInput = z.infer<typeof createScheduleSchema>;
 
 export const updateScheduleSchema = z.object({
+  examType: ExamType.optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
   registrationOpenDate: z.coerce.date().nullable().optional(),
@@ -158,6 +165,8 @@ export const updateScheduleSchema = z.object({
   location: z.string().max(500).nullable().optional(),
   testCenterId: z.string().uuid().nullable().optional(),
   roomId: z.string().uuid().nullable().optional(),
+  registrationFee: z.number().min(0).optional(),
+  settings: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 export type UpdateScheduleInput = z.infer<typeof updateScheduleSchema>;
 

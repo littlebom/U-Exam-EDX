@@ -34,15 +34,34 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           where: { email: email.toLowerCase() },
         });
 
-        if (!user || !user.passwordHash) return null;
+        const authIpEarly = (globalThis as Record<string, unknown>).__lastAuthIp as string | null;
+
+        if (!user || !user.passwordHash) {
+          const { logAuthEvent } = await import("@/services/audit-log.service");
+          logAuthEvent("AUTH_LOGIN_FAILED", { ipAddress: authIpEarly, detail: { email, reason: "user_not_found" } });
+          return null;
+        }
 
         const isValid = await verifyPassword(password, user.passwordHash);
-        if (!isValid) return null;
+        if (!isValid) {
+          const { logAuthEvent } = await import("@/services/audit-log.service");
+          logAuthEvent("AUTH_LOGIN_FAILED", { userId: user.id, ipAddress: authIpEarly, detail: { email, reason: "wrong_password" } });
+          return null;
+        }
 
         // Update last login
         await prisma.user.update({
           where: { id: user.id },
           data: { lastLoginAt: new Date() },
+        });
+
+        // Log successful login
+        const { logAuthEvent } = await import("@/services/audit-log.service");
+        const authIp = (globalThis as Record<string, unknown>).__lastAuthIp as string | null;
+        logAuthEvent("AUTH_LOGIN", {
+          userId: user.id,
+          ipAddress: authIp,
+          detail: { email, provider: "credentials" },
         });
 
         return {

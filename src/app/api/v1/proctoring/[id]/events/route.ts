@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/rbac";
 import { logProctoringEvent, getProctoringEvents } from "@/services/proctoring.service";
 import { handleApiError } from "@/lib/errors";
-import { z } from "zod";
+import { logProctoringEventSchema } from "@/lib/validations/proctoring";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -24,19 +24,14 @@ export async function GET(req: NextRequest, context: RouteContext) {
   }
 }
 
-const eventSchema = z.object({
-  type: z.string().min(1),
-  severity: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
-  screenshot: z.string().url().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
+// Schema imported from @/lib/validations/proctoring
 
 export async function POST(req: NextRequest, context: RouteContext) {
   try {
     await requirePermission("proctoring:monitor");
     const { id } = await context.params;
     const body = await req.json();
-    const data = eventSchema.parse(body);
+    const data = logProctoringEventSchema.parse(body);
 
     const result = await logProctoringEvent(id, data);
 

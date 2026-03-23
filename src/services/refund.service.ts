@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { stripe } from "@/lib/stripe";
 import { errors } from "@/lib/errors";
+import { sendNotification } from "@/services/notification.service";
 import type { CreateRefundInput } from "@/lib/validations/payment";
 
 // ─── List Refunds ───────────────────────────────────────────────────
@@ -109,6 +111,25 @@ export async function processRefund(
   }
 
   if (status === "APPROVED") {
+    // If payment has a Stripe transaction ID, create Stripe refund first
+    const payment = await prisma.payment.findUniqueOrThrow({
+      where: { id: refund.paymentId },
+    });
+
+    let stripeRefundId: string | undefined;
+    if (stripe && payment.transactionId) {
+      try {
+        const stripeRefund = await stripe.refunds.create({
+          payment_intent: payment.transactionId,
+          amount: Math.round(refund.amount * 100), // THB → satang
+        });
+        stripeRefundId = stripeRefund.id;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        throw errors.badRequest(`Stripe refund failed: ${message}`);
+      }
+    }
+
     // Transaction: approve refund + update payment status + update registration
     return prisma.$transaction(async (tx) => {
       const updatedRefund = await tx.refund.update({
@@ -117,19 +138,22 @@ export async function processRefund(
           status: "PROCESSED",
           processedById,
           processedAt: new Date(),
+          ...(stripeRefundId && {
+            reason: `${refund.reason ?? ""}\n[Stripe Refund: ${stripeRefundId}]`.trim(),
+          }),
         },
       });
 
       // Check if this is a full refund
-      const payment = await tx.payment.findUniqueOrThrow({
+      const paymentWithRefunds = await tx.payment.findUniqueOrThrow({
         where: { id: refund.paymentId },
         include: { refunds: { where: { status: "PROCESSED" } } },
       });
 
       const totalRefunded =
-        payment.refunds.reduce((sum, r) => sum + r.amount, 0) + refund.amount;
+        paymentWithRefunds.refunds.reduce((sum, r) => sum + r.amount, 0) + refund.amount;
 
-      if (totalRefunded >= payment.amount) {
+      if (totalRefunded >= paymentWithRefunds.amount) {
         // Full refund — mark payment as REFUNDED
         await tx.payment.update({
           where: { id: refund.paymentId },
@@ -143,12 +167,39 @@ export async function processRefund(
         });
       }
 
+      // Send notification to candidate
+      try {
+        const paymentInfo = await tx.payment.findUniqueOrThrow({
+          where: { id: refund.paymentId },
+          include: {
+            registration: {
+              select: {
+                examSchedule: {
+                  select: { exam: { select: { title: true } } },
+                },
+              },
+            },
+          },
+        });
+
+        await sendNotification({
+          tenantId,
+          userId: payment.candidateId,
+          type: "REFUND_APPROVED",
+          title: "อนุมัติคืนเงินแล้ว",
+          message: `คำขอคืนเงิน ${refund.amount} บาท สำหรับ "${paymentInfo.registration.examSchedule.exam.title}" ได้รับการอนุมัติแล้ว`,
+          link: "/profile/wallet",
+        });
+      } catch {
+        // Non-critical
+      }
+
       return updatedRefund;
     });
   }
 
   // Rejected
-  return prisma.refund.update({
+  const rejectedRefund = await prisma.refund.update({
     where: { id: refundId },
     data: {
       status: "REJECTED",
@@ -156,4 +207,33 @@ export async function processRefund(
       processedAt: new Date(),
     },
   });
+
+  // Send rejection notification
+  try {
+    const payment = await prisma.payment.findUniqueOrThrow({
+      where: { id: refund.paymentId },
+      include: {
+        registration: {
+          select: {
+            examSchedule: {
+              select: { exam: { select: { title: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    await sendNotification({
+      tenantId,
+      userId: payment.candidateId,
+      type: "REFUND_REJECTED",
+      title: "คำขอคืนเงินถูกปฏิเสธ",
+      message: `คำขอคืนเงิน ${refund.amount} บาท สำหรับ "${payment.registration.examSchedule.exam.title}" ถูกปฏิเสธ`,
+      link: "/profile/wallet",
+    });
+  } catch {
+    // Non-critical
+  }
+
+  return rejectedRefund;
 }

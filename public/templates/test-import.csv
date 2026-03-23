@@ -1,0 +1,9 @@
+type,difficulty,content,option_a,option_b,option_c,option_d,correct_answer,explanation,points,subject_code
+MC,EASY,HTML ย่อมาจากอะไร?,HyperText Markup Language,High Tech Modern Language,HyperText Machine Language,Home Tool Markup Language,A,HTML ย่อมาจาก HyperText Markup Language,1,IT101
+MC,MEDIUM,ข้อใดเป็น CSS Framework?,Bootstrap,Node.js,Python,MySQL,A,Bootstrap เป็น CSS Framework ที่นิยมใช้,1,IT101
+TF,EASY,JavaScript เป็นภาษา Programming ฝั่ง Server เท่านั้น,,,,false,JavaScript ใช้ได้ทั้ง Client และ Server,1,IT101
+MC,HARD,Big O Notation ของ Binary Search คือข้อใด?,O(log n),O(n),O(n²),O(1),A,Binary Search แบ่งครึ่งข้อมูลทุกรอบ,2,PRG501
+SHORT_ANSWER,MEDIUM,SQL คำสั่งใดใช้สำหรับดึงข้อมูลจากตาราง?,,,,SELECT,คำสั่ง SELECT ใช้ดึงข้อมูล,1,DB301
+MC,MEDIUM,Protocol ใดทำงานที่ Layer 4 ของ OSI Model?,TCP,HTTP,IP,Ethernet,A,TCP ทำงานที่ Transport Layer,1,NET201
+TF,MEDIUM,Firewall สามารถป้องกัน Social Engineering Attack ได้,,,,false,Social Engineering โจมตีผ่านคน,1,SEC401
+ESSAY,HARD,จงอธิบายหลักการ SOLID Principles ในการออกแบบซอฟต์แวร์,,,,,คำตอบเปิด,3,PRG501

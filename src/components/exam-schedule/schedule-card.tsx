@@ -1,6 +1,7 @@
 "use client";
 
-import { Calendar, MapPin, Users, Clock, MoreVertical, Pencil, XCircle, Eye, BarChart3, DoorOpen, CalendarClock, Building2 } from "lucide-react";
+import { Calendar, MapPin, Users, Clock, MoreVertical, Pencil, XCircle, Eye, BarChart3, DoorOpen, CalendarClock, Building2, CreditCard, Smartphone, ScanFace, Globe, Award } from "lucide-react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +25,7 @@ import {
 export interface ScheduleRow {
   id: string;
   examId: string;
+  examType?: string;
   startDate: string;
   endDate: string;
   status: string;
@@ -33,6 +35,8 @@ export interface ScheduleRow {
   registrationDeadline?: string | null;
   testCenterId?: string | null;
   roomId?: string | null;
+  registrationFee?: number;
+  settings?: Record<string, unknown> | null;
   exam: { id: string; title: string; status: string };
   testCenter?: { id: string; name: string; code: string } | null;
   room?: { id: string; name: string; code: string; capacity: number | null } | null;
@@ -42,6 +46,7 @@ interface ScheduleCardProps {
   schedule: ScheduleRow;
   onEdit: (schedule: ScheduleRow) => void;
   onCancel: (schedule: ScheduleRow) => void;
+  onSetCertificate?: (schedule: ScheduleRow) => void;
 }
 
 // ============================================================
@@ -72,7 +77,7 @@ function PhaseBadge({ info }: { info: SchedulePhaseInfo }) {
 // Component
 // ============================================================
 
-export function ScheduleCard({ schedule, onEdit, onCancel }: ScheduleCardProps) {
+export function ScheduleCard({ schedule, onEdit, onCancel, onSetCertificate }: ScheduleCardProps) {
   const phaseInfo = getSchedulePhase(schedule);
   const countdown = getCountdownText(schedule);
   const dateRange = formatScheduleDateRange(schedule.startDate, schedule.endDate);
@@ -84,9 +89,20 @@ export function ScheduleCard({ schedule, onEdit, onCancel }: ScheduleCardProps) 
   return (
     <Card className="transition-shadow hover:shadow-md">
       <CardContent className="p-4">
-        {/* Header: Phase badge + menu */}
+        {/* Header: Phase badge + exam type + menu */}
         <div className="flex items-start justify-between mb-3">
-          <PhaseBadge info={phaseInfo} />
+          <div className="flex items-center gap-2">
+            <PhaseBadge info={phaseInfo} />
+            {schedule.examType === "ONLINE" ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                <Globe className="h-3 w-3" /> Online
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                <MapPin className="h-3 w-3" /> Onsite
+              </span>
+            )}
+          </div>
           {showMenu && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -103,15 +119,29 @@ export function ScheduleCard({ schedule, onEdit, onCancel }: ScheduleCardProps) 
                   </DropdownMenuItem>
                 )}
                 {phaseInfo.phase === "IN_PROGRESS" && (
-                  <DropdownMenuItem className="gap-2">
-                    <Eye className="h-4 w-4" />
-                    ดูสถานะ
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuItem className="gap-2">
+                      <Eye className="h-4 w-4" />
+                      ดูสถานะ
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="gap-2" asChild>
+                      <Link href={`/admin/check-in/${schedule.id}`} target="_blank">
+                        <ScanFace className="h-4 w-4" />
+                        เปิด Check-in มือถือ
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
                 )}
                 {phaseInfo.phase === "COMPLETED" && (
                   <DropdownMenuItem className="gap-2">
                     <BarChart3 className="h-4 w-4" />
                     ดูผลสอบ
+                  </DropdownMenuItem>
+                )}
+                {(phaseInfo.phase === "IN_PROGRESS" || phaseInfo.phase === "COMPLETED") && onSetCertificate && (
+                  <DropdownMenuItem onClick={() => onSetCertificate(schedule)} className="gap-2">
+                    <Award className="h-4 w-4" />
+                    ตั้งค่าใบประกาศ
                   </DropdownMenuItem>
                 )}
                 {canCancel && (
@@ -163,6 +193,15 @@ export function ScheduleCard({ schedule, onEdit, onCancel }: ScheduleCardProps) 
               <span className="text-xs">{schedule.maxCandidates} คน</span>
             </div>
           )}
+
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-3.5 w-3.5 shrink-0" />
+            <span className="text-xs font-medium">
+              {schedule.registrationFee && schedule.registrationFee > 0
+                ? `฿${schedule.registrationFee.toLocaleString()}`
+                : "ฟรี"}
+            </span>
+          </div>
 
           {(schedule.registrationOpenDate || schedule.registrationDeadline) && (
             <div className="flex items-center gap-2">

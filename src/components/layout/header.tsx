@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useEffect } from "react";
 import { Menu, User, LogOut, Settings, Sun, Moon, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { useTheme } from "next-themes";
 import { signOut } from "next-auth/react";
 import { useAppSession } from "@/hooks/use-session";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import Link from "next/link";
 
 interface HeaderProps {
@@ -25,7 +28,33 @@ interface HeaderProps {
 
 export function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
   const { theme, setTheme } = useTheme();
-  const { user, tenant, role } = useAppSession();
+  const { user, tenant, role, isAuthenticated } = useAppSession();
+
+  const prevCountRef = useRef<number>(0);
+
+  const { data: unreadData } = useQuery<{ data: { count: number } }>({
+    queryKey: ["notification-unread-count"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/notifications/unread-count");
+      return res.json();
+    },
+    enabled: isAuthenticated,
+    refetchInterval: 10000,
+  });
+
+  const unreadCount = unreadData?.data?.count ?? 0;
+
+  // Toast when new notifications arrive
+  useEffect(() => {
+    if (unreadCount > prevCountRef.current && prevCountRef.current > 0) {
+      const newCount = unreadCount - prevCountRef.current;
+      toast.info(
+        `คุณมีแจ้งเตือนใหม่ ${newCount} รายการ`,
+        { action: { label: "ดู", onClick: () => window.location.href = "/admin/notifications" } }
+      );
+    }
+    prevCountRef.current = unreadCount;
+  }, [unreadCount]);
 
   const initials = user?.name
     ? user.name
@@ -83,9 +112,11 @@ export function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
           <Button variant="ghost" size="icon" className="relative" asChild>
             <Link href="/admin/notifications">
               <Bell className="h-4 w-4" />
-              <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 text-[10px] flex items-center justify-center">
-                5
-              </Badge>
+              {unreadCount > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-4 min-w-4 p-0 text-[10px] flex items-center justify-center">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Badge>
+              )}
             </Link>
           </Button>
 

@@ -12,6 +12,7 @@ import {
   Eye,
   Users,
   Settings,
+  ScanFace,
   type LucideIcon,
 } from "lucide-react";
 
@@ -46,6 +47,8 @@ export const sidebarNav: NavItem[] = [
     children: [
       { title: "ชุดข้อสอบ", href: "/admin/exams" },
       { title: "ตารางสอบ", href: "/admin/exams/schedule" },
+      { title: "เช็คอินวันสอบ", href: "/admin/exams/check-in" },
+      { title: "บันทึกเช็คอิน", href: "/admin/exams/check-in/logs" },
       { title: "ติดตามผู้สอบ", href: "/admin/exams/sessions" },
     ],
   },
@@ -71,9 +74,7 @@ export const sidebarNav: NavItem[] = [
       { title: "ผังที่นั่ง", href: "/admin/test-centers/seats" },
       { title: "อุปกรณ์", href: "/admin/test-centers/equipment" },
       { title: "บุคลากร", href: "/admin/test-centers/staff" },
-      { title: "วันสอบ", href: "/admin/test-centers/exam-day" },
       { title: "สถิติ", href: "/admin/test-centers/analytics" },
-      { title: "อนุมัติ", href: "/admin/test-centers/approvals" },
     ],
   },
   {
@@ -92,8 +93,10 @@ export const sidebarNav: NavItem[] = [
     icon: CreditCard,
     children: [
       { title: "รายการชำระ", href: "/admin/payments" },
+      { title: "คืนเงิน", href: "/admin/payments/refunds" },
       { title: "ใบเสร็จ", href: "/admin/payments/invoices" },
       { title: "คูปอง", href: "/admin/payments/coupons" },
+      { title: "สถิติ", href: "/admin/payments/analytics" },
     ],
   },
   {
@@ -106,19 +109,25 @@ export const sidebarNav: NavItem[] = [
     ],
   },
   {
-    title: "รายงาน",
-    href: "/admin/analytics",
+    title: "วิเคราะห์ผลสอบ",
+    href: "/admin/exam-analytics",
     icon: BarChart3,
     children: [
-      { title: "ภาพรวม", href: "/admin/analytics" },
-      { title: "วิเคราะห์ข้อสอบ", href: "/admin/analytics/items" },
-      { title: "แนวโน้ม", href: "/admin/analytics/trends" },
+      { title: "ภาพรวม", href: "/admin/exam-analytics" },
+      { title: "วิเคราะห์ข้อสอบ", href: "/admin/exam-analytics/items" },
+      { title: "แนวโน้ม", href: "/admin/exam-analytics/trends" },
+      { title: "เปรียบเทียบ", href: "/admin/exam-analytics/compare" },
     ],
   },
   {
     title: "แจ้งเตือน",
     href: "/admin/notifications",
     icon: Bell,
+    children: [
+      { title: "ทั้งหมด", href: "/admin/notifications" },
+      { title: "ส่งอีเมล", href: "/admin/notifications/compose" },
+      { title: "ตั้งค่าการแจ้งเตือน", href: "/admin/notifications/preferences" },
+    ],
   },
   {
     title: "คุมสอบ",
@@ -127,6 +136,7 @@ export const sidebarNav: NavItem[] = [
     children: [
       { title: "Live Monitor", href: "/admin/proctoring" },
       { title: "เหตุการณ์", href: "/admin/proctoring/incidents" },
+      { title: "Audit Logs", href: "/admin/proctoring/audit-logs" },
     ],
   },
   {
@@ -147,6 +157,8 @@ export const sidebarNav: NavItem[] = [
       { title: "API Keys", href: "/admin/settings/api-keys" },
       { title: "Webhook", href: "/admin/settings/webhooks" },
       { title: "e-Wallet", href: "/admin/settings/ewallet" },
+      { title: "ชำระเงิน", href: "/admin/settings/payment" },
+      { title: "อีเมล (SMTP)", href: "/admin/settings/email" },
     ],
   },
 ];

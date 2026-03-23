@@ -12,6 +12,8 @@ import {
   FileQuestion,
   Settings,
   Pencil,
+  Download,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -208,6 +210,23 @@ export default function SubjectDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" asChild>
+            <Link href={`/admin/question-bank/import?subjectId=${subjectId}`}>
+              <Upload className="h-4 w-4" />
+              นำเข้า
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              window.open(`/api/v1/questions/export?subjectId=${subjectId}`, "_blank");
+            }}
+          >
+            <Download className="h-4 w-4" />
+            ส่งออก
+          </Button>
           <Button variant="outline" size="sm" className="gap-1.5" asChild>
             <Link href={`/question-bank/subjects/${subjectId}/settings`}>
               <Settings className="h-4 w-4" />

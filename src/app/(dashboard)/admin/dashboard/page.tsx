@@ -5,12 +5,11 @@ import {
   FileText,
   Users,
   TrendingUp,
-  Banknote,
+  CheckCircle2,
   Plus,
   ClipboardList,
   BarChart3,
-  ArrowUpRight,
-  ArrowDownRight,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 import {
   BarChart,
   Bar,
@@ -40,130 +40,114 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// --- Mock Data ---
+// ─── Types ──────────────────────────────────────────────────────────
 
-const summaryCards = [
-  {
-    title: "จำนวนสอบทั้งหมด",
-    value: "24",
-    change: "+3",
-    changeType: "increase" as const,
-    description: "จากเดือนที่แล้ว",
-    icon: FileText,
-  },
-  {
-    title: "ผู้สมัครสอบ",
-    value: "1,250",
-    change: "+180",
-    changeType: "increase" as const,
-    description: "จากเดือนที่แล้ว",
-    icon: Users,
-  },
-  {
-    title: "อัตราผ่านสอบ",
-    value: "78.5%",
-    change: "+2.1%",
-    changeType: "increase" as const,
-    description: "จากเดือนที่แล้ว",
-    icon: TrendingUp,
-  },
-  {
-    title: "รายได้",
-    value: "฿2.4M",
-    change: "-5%",
-    changeType: "decrease" as const,
-    description: "จากเดือนที่แล้ว",
-    icon: Banknote,
-  },
-];
-
-const monthlyStats = [
-  { month: "ต.ค.", exams: 18, candidates: 890, passed: 680 },
-  { month: "พ.ย.", exams: 22, candidates: 1050, passed: 820 },
-  { month: "ธ.ค.", exams: 15, candidates: 780, passed: 590 },
-  { month: "ม.ค.", exams: 20, candidates: 1100, passed: 870 },
-  { month: "ก.พ.", exams: 21, candidates: 1070, passed: 850 },
-  { month: "มี.ค.", exams: 24, candidates: 1250, passed: 980 },
-];
-
-const recentActivity = [
-  {
-    id: "1",
-    name: "สมศักดิ์ จันทร์ดี",
-    action: "สมัครสอบ",
-    exam: "IT Fundamentals",
-    date: "10 มี.ค. 2569",
-    status: "pending",
-  },
-  {
-    id: "2",
-    name: "วิไล สุขใจ",
-    action: "ผ่านสอบ",
-    exam: "CPA Certification",
-    date: "9 มี.ค. 2569",
-    status: "passed",
-  },
-  {
-    id: "3",
-    name: "ประยุทธ์ มั่นคง",
-    action: "ไม่ผ่านสอบ",
-    exam: "English Proficiency",
-    date: "9 มี.ค. 2569",
-    status: "failed",
-  },
-  {
-    id: "4",
-    name: "อารียา แก้วใส",
-    action: "สมัครสอบ",
-    exam: "PMP Certification",
-    date: "8 มี.ค. 2569",
-    status: "pending",
-  },
-  {
-    id: "5",
-    name: "ธนกร เจริญศรี",
-    action: "ผ่านสอบ",
-    exam: "IT Fundamentals",
-    date: "8 มี.ค. 2569",
-    status: "passed",
-  },
-];
-
-function getStatusBadge(status: string) {
-  switch (status) {
-    case "passed":
-      return (
-        <Badge
-          variant="secondary"
-          className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-        >
-          ผ่าน
-        </Badge>
-      );
-    case "failed":
-      return (
-        <Badge
-          variant="secondary"
-          className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-        >
-          ไม่ผ่าน
-        </Badge>
-      );
-    case "pending":
-      return (
-        <Badge
-          variant="secondary"
-          className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-        >
-          รอดำเนินการ
-        </Badge>
-      );
-    default:
-      return <Badge variant="outline">{status}</Badge>;
-  }
+interface OverviewStats {
+  totalExams: number;
+  totalCandidates: number;
+  averagePassRate: number;
+  averageScore: number;
 }
 
+interface TrendItem {
+  label: string;
+  totalCandidates: number;
+  averagePassRate: number;
+}
+
+interface GradeRow {
+  id: string;
+  totalScore: number;
+  maxScore: number;
+  isPassed: boolean;
+  publishedAt: string;
+  session: {
+    candidate: { name: string; email: string };
+    examSchedule: { exam: { title: string } };
+  };
+}
+
+// ─── Page ───────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
+  const { data: overviewResult, isLoading } = useQuery<{ data: OverviewStats }>({
+    queryKey: ["dashboard-overview"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/analytics/overview");
+      return res.json();
+    },
+  });
+
+  const { data: trendResult } = useQuery<{ data: { trends: TrendItem[] } }>({
+    queryKey: ["dashboard-trends"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/analytics/trends?months=6");
+      return res.json();
+    },
+  });
+
+  const { data: gradesResult } = useQuery<{ data: GradeRow[] }>({
+    queryKey: ["dashboard-recent-grades"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/grades?status=PUBLISHED&perPage=5");
+      return res.json();
+    },
+  });
+
+  const overview = overviewResult?.data ?? {
+    totalExams: 0,
+    totalCandidates: 0,
+    averagePassRate: 0,
+    averageScore: 0,
+  };
+
+  const trendData = (trendResult?.data?.trends ?? []).map((t) => ({
+    label: t.label,
+    candidates: t.totalCandidates,
+    passRate: t.averagePassRate,
+  }));
+
+  const recentGrades = gradesResult?.data ?? [];
+
+  const statsCards = [
+    {
+      title: "จำนวนสอบทั้งหมด",
+      value: overview.totalExams.toString(),
+      icon: FileText,
+      color: "text-blue-600",
+      bgColor: "bg-blue-100 dark:bg-blue-900/30",
+    },
+    {
+      title: "ผู้เข้าสอบ",
+      value: overview.totalCandidates.toString(),
+      icon: Users,
+      color: "text-green-600",
+      bgColor: "bg-green-100 dark:bg-green-900/30",
+    },
+    {
+      title: "อัตราผ่านสอบ",
+      value: `${overview.averagePassRate.toFixed(1)}%`,
+      icon: TrendingUp,
+      color: "text-amber-600",
+      bgColor: "bg-amber-100 dark:bg-amber-900/30",
+    },
+    {
+      title: "คะแนนเฉลี่ย",
+      value: `${overview.averageScore.toFixed(1)}%`,
+      icon: CheckCircle2,
+      color: "text-purple-600",
+      bgColor: "bg-purple-100 dark:bg-purple-900/30",
+    },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -187,7 +171,7 @@ export default function DashboardPage() {
               สร้างชุดสอบ
             </Button>
           </Link>
-          <Link href="/admin/analytics">
+          <Link href="/admin/exam-analytics">
             <Button size="sm" className="gap-1.5">
               <BarChart3 className="h-4 w-4" />
               ดูรายงาน
@@ -198,133 +182,137 @@ export default function DashboardPage() {
 
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {summaryCards.map((card) => (
+        {statsCards.map((card) => (
           <Card key={card.title}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardDescription className="text-sm font-medium">
                 {card.title}
               </CardDescription>
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                <card.icon className="h-4 w-4 text-primary" />
+              <div
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-md",
+                  card.bgColor
+                )}
+              >
+                <card.icon className={cn("h-4 w-4", card.color)} />
               </div>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{card.value}</div>
-              <div className="mt-1 flex items-center gap-1 text-xs">
-                {card.changeType === "increase" ? (
-                  <ArrowUpRight className="h-3 w-3 text-green-600" />
-                ) : (
-                  <ArrowDownRight className="h-3 w-3 text-red-600" />
-                )}
-                <span
-                  className={cn(
-                    "font-medium",
-                    card.changeType === "increase"
-                      ? "text-green-600"
-                      : "text-red-600"
-                  )}
-                >
-                  {card.change}
-                </span>
-                <span className="text-muted-foreground">
-                  {card.description}
-                </span>
-              </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Chart + Activity Table */}
+      {/* Chart + Recent Grades */}
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* Bar Chart */}
+        {/* Bar Chart — 6 months trend */}
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle className="text-base">สถิติรายเดือน</CardTitle>
             <CardDescription>
-              จำนวนผู้สมัครสอบและผู้ผ่านสอบ 6 เดือนล่าสุด
+              จำนวนผู้เข้าสอบ 6 เดือนล่าสุด
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={monthlyStats}
-                  margin={{ top: 5, right: 10, left: -10, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    dataKey="month"
-                    tick={{ fontSize: 12 }}
-                    className="text-muted-foreground"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 12 }}
-                    className="text-muted-foreground"
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--background))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                    }}
-                    labelStyle={{ fontWeight: 600 }}
-                  />
-                  <Bar
-                    dataKey="candidates"
-                    name="ผู้สมัครสอบ"
-                    fill="oklch(0.34 0.13 25)"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="passed"
-                    name="ผ่านสอบ"
-                    fill="oklch(0.34 0.13 25 / 0.4)"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+              {trendData.some((t) => t.candidates > 0) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={trendData}
+                    margin={{ top: 5, right: 10, left: -10, bottom: 5 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      className="stroke-border"
+                    />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 12 }}
+                      className="text-muted-foreground"
+                    />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      className="text-muted-foreground"
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--background))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                      }}
+                      labelStyle={{ fontWeight: 600 }}
+                    />
+                    <Bar
+                      dataKey="candidates"
+                      name="ผู้เข้าสอบ"
+                      fill="oklch(0.34 0.13 25)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground">
+                  ยังไม่มีข้อมูล
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Recent Activity */}
+        {/* Recent Published Grades */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">กิจกรรมล่าสุด</CardTitle>
-            <CardDescription>
-              การสมัครสอบและผลสอบล่าสุด
-            </CardDescription>
+            <CardTitle className="text-base">ผลสอบล่าสุด</CardTitle>
+            <CardDescription>ผลสอบที่เผยแพร่แล้ว 5 รายการล่าสุด</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ชื่อ</TableHead>
-                  <TableHead>สถานะ</TableHead>
-                  <TableHead className="text-right">วันที่</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentActivity.map((activity) => (
-                  <TableRow key={activity.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{activity.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {activity.exam}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(activity.status)}</TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
-                      {activity.date}
-                    </TableCell>
+            {recentGrades.length === 0 ? (
+              <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                ยังไม่มีผลสอบ
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ผู้สอบ</TableHead>
+                    <TableHead>ผล</TableHead>
+                    <TableHead className="text-right">คะแนน</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {recentGrades.map((g) => (
+                    <TableRow key={g.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium text-sm">
+                            {g.session?.candidate?.name ?? "—"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {g.session?.examSchedule?.exam?.title ?? "—"}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {g.isPassed ? (
+                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                            ผ่าน
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                            ไม่ผ่าน
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-sm font-medium">
+                        {g.totalScore}/{g.maxScore}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

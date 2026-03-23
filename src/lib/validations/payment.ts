@@ -77,6 +77,15 @@ export const applyCouponSchema = z.object({
   registrationId: z.string().uuid("กรุณาระบุการสมัครสอบ"),
 });
 
+// ─── Stripe Checkout Schema ─────────────────────────────────────────
+
+export const createCheckoutSessionSchema = z.object({
+  registrationId: z.string().uuid("กรุณาระบุการสมัครสอบ"),
+  method: z.enum(["CREDIT_CARD", "PROMPTPAY"]),
+});
+
+export type CreateCheckoutSessionInput = z.infer<typeof createCheckoutSessionSchema>;
+
 // ─── Type exports ───────────────────────────────────────────────────
 
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;

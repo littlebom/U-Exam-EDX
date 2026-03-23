@@ -72,6 +72,7 @@ model Tenant {
   apiKeys                 ApiKey[]
   webhooks                Webhook[]
   mediaFiles              MediaFile[]
+  auditLogs               AuditLog[]
 
   @@map("tenants")
 }
@@ -85,6 +86,7 @@ model User {
   passwordHash String? @map("password_hash") @db.VarChar(255)
   name         String  @db.VarChar(255)
   imageUrl     String? @map("image_url") @db.VarChar(500)
+  faceImageUrl String? @map("face_image_url") @db.VarChar(500)
   phone        String? @db.VarChar(20)
   provider     String  @default("credentials") @db.VarChar(20)
   providerId   String? @map("provider_id") @db.VarChar(255)
@@ -122,6 +124,7 @@ model User {
   certificates            Certificate[]
   incidentsCreated        Incident[]  @relation("IncidentCreatedBy")
   uploadedMedia           MediaFile[] @relation("MediaUploadedBy")
+  auditLogs               AuditLog[]  @relation("AuditLogs")
 
   @@map("users")
 }
@@ -634,8 +637,11 @@ model ExamSchedule {
   maxCandidates        Int?     @map("max_candidates")
   testCenterId         String?  @map("test_center_id") @db.Uuid
   roomId               String?  @map("room_id") @db.Uuid
+  examType             String   @default("ONSITE") @map("exam_type") @db.VarChar(20) // ONLINE, ONSITE
   status               String   @default("SCHEDULED") @db.VarChar(20) // SCHEDULED, ACTIVE, COMPLETED, CANCELLED
   location             String?  @db.VarChar(500) // optional free-text location (fallback when no testCenter/room)
+  registrationFee      Float    @default(0) @map("registration_fee") // ค่าสมัครสอบ (THB)
+  settings             Json?    @db.JsonB // Check-in settings, proctoring overrides, etc.
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
@@ -971,6 +977,7 @@ model TestCenter {
   status          String  @default("ACTIVE") @db.VarChar(20) // ACTIVE, MAINTENANCE, INACTIVE
   description     String? @db.Text
   imageUrl        String? @map("image_url") @db.VarChar(500)
+  allowedIps      Json?   @map("allowed_ips") @db.JsonB // string[] of IP addresses or CIDR ranges
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
@@ -1480,6 +1487,9 @@ model CandidateProfile {
   major          String? @db.VarChar(255)
   graduationYear Int?    @map("graduation_year")
 
+  // Face Recognition
+  faceDescriptor Json? @map("face_descriptor") @db.JsonB // Float32Array (128 numbers) for face matching
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -1726,7 +1736,33 @@ model Incident {
 }
 
 // ============================================================
-// 36. ApiKey (Tenant API Keys for external integrations)
+// 36. AuditLog
+// ============================================================
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String?  @map("tenant_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  action    String   @db.VarChar(50) // AUTH_LOGIN, EXAM_START, etc.
+  category  String   @db.VarChar(20) // AUTH, EXAM, ADMIN, USER, SYSTEM
+  target    String?  @db.VarChar(200) // e.g. "ExamSession:uuid-xxx"
+  detail    Json?    @db.JsonB // { ip, userAgent, reason, changes, ... }
+  ipAddress String?  @map("ip_address") @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations (optional — user may be deleted)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  user   User?   @relation("AuditLogs", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([action])
+  @@index([category])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================
+// 37. ApiKey (Tenant API Keys for external integrations)
 // ============================================================
 model ApiKey {
   id         String    @id @default(uuid()) @db.Uuid

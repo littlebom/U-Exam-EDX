@@ -358,8 +358,8 @@ export default function FaceVerifyPage() {
           />
         )}
 
-        {/* Back link */}
-        <div className="text-center">
+        {/* Back link + Skip option */}
+        <div className="text-center space-y-2">
           <Button
             variant="ghost"
             size="sm"
@@ -367,6 +367,20 @@ export default function FaceVerifyPage() {
           >
             กลับหน้าการสอบของฉัน
           </Button>
+          <div>
+            <Button
+              variant="link"
+              size="sm"
+              className="text-xs text-muted-foreground"
+              onClick={() => {
+                if (confirm("ข้ามการยืนยันตัวตน? (สำหรับกรณีกล้องมีปัญหา)")) {
+                  router.push(`/take/${params.scheduleId}`);
+                }
+              }}
+            >
+              ข้ามการยืนยัน (กล้องมีปัญหา)
+            </Button>
+          </div>
         </div>
       </div>
     </div>

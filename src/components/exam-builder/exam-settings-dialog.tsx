@@ -77,7 +77,7 @@ export function ExamSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>ตั้งค่าชุดสอบ</DialogTitle>
           <DialogDescription>แก้ไขข้อมูลเบื้องต้นของชุดสอบ</DialogDescription>
@@ -115,7 +115,11 @@ export function ExamSettingsDialog({
               />
             </div>
           </div>
+          <p className="text-xs text-muted-foreground">
+            💡 ตั้งค่าการคุมสอบ (Proctoring) ได้ที่หน้า &quot;ตารางสอบ&quot; → แก้ไขรอบสอบ
+          </p>
         </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             ยกเลิก

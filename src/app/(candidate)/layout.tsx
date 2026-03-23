@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { useSession, signOut } from "next-auth/react";
+import { signOut } from "next-auth/react";
 import {
   GraduationCap,
   Menu,
@@ -18,7 +18,9 @@ import {
   Wallet,
   ChevronDown,
   Settings,
+  LayoutDashboard,
 } from "lucide-react";
+import { useAppSession } from "@/hooks/use-session";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -53,15 +55,19 @@ export default function CandidateLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { data: session, status } = useSession();
+  const { user, role, isAuthenticated, isLoading } = useAppSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const userInitials = session?.user?.name
-    ? session.user.name.slice(0, 2)
+  const userInitials = user?.name
+    ? user.name.slice(0, 2)
     : "ผส";
 
   // Prevent hydration mismatch — session is null on server, loaded on client
-  const isSessionReady = status !== "loading";
+  const isSessionReady = !isLoading;
+
+  /** Roles that have access to admin dashboard */
+  const CANDIDATE_ROLES = ["CANDIDATE"];
+  const canAccessAdmin = !CANDIDATE_ROLES.includes(role?.name ?? "CANDIDATE");
 
   const isNavActive = (href: string) =>
     pathname === href ||
@@ -113,15 +119,15 @@ export default function CandidateLayout({
                       className="flex items-center gap-2 px-2"
                     >
                       <Avatar className="h-8 w-8">
-                        {session?.user?.image && (
-                          <AvatarImage src={session.user.image} alt={session.user.name ?? ""} />
+                        {user?.image && (
+                          <AvatarImage src={user.image} alt={user.name ?? ""} />
                         )}
                         <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
                           {userInitials}
                         </AvatarFallback>
                       </Avatar>
                       <span className="text-sm font-medium hidden lg:inline">
-                        {session?.user?.name ?? "ผู้สอบ"}
+                        {user?.name ?? "ผู้สอบ"}
                       </span>
                       <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     </Button>
@@ -130,10 +136,10 @@ export default function CandidateLayout({
                     <DropdownMenuLabel className="font-normal">
                       <div className="flex flex-col space-y-1">
                         <p className="text-sm font-medium">
-                          {session?.user?.name ?? "ผู้สอบ"}
+                          {user?.name ?? "ผู้สอบ"}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {session?.user?.email ?? ""}
+                          {user?.email ?? ""}
                         </p>
                       </div>
                     </DropdownMenuLabel>
@@ -149,6 +155,20 @@ export default function CandidateLayout({
                         </Link>
                       </DropdownMenuItem>
                     ))}
+                    {canAccessAdmin && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href="/admin/dashboard"
+                            className="flex items-center gap-2"
+                          >
+                            <LayoutDashboard className="h-4 w-4" />
+                            Admin Dashboard
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="flex items-center gap-2 text-destructive focus:text-destructive"
@@ -210,15 +230,15 @@ export default function CandidateLayout({
             <div className="mt-2 border-t pt-2">
               <div className="flex items-center gap-2 px-3 py-2">
                 <Avatar className="h-6 w-6">
-                  {session?.user?.image && (
-                    <AvatarImage src={session.user.image} alt={session.user.name ?? ""} />
+                  {user?.image && (
+                    <AvatarImage src={user.image} alt={user.name ?? ""} />
                   )}
                   <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
                     {userInitials}
                   </AvatarFallback>
                 </Avatar>
                 <span className="text-sm font-medium">
-                  {session?.user?.name ?? "ผู้สอบ"}
+                  {user?.name ?? "ผู้สอบ"}
                 </span>
               </div>
               {avatarMenuLinks.map((link) => (
@@ -237,6 +257,16 @@ export default function CandidateLayout({
                   {link.label}
                 </Link>
               ))}
+              {canAccessAdmin && (
+                <Link
+                  href="/admin/dashboard"
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  Admin Dashboard
+                </Link>
+              )}
               <button
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                 onClick={() => signOut({ callbackUrl: "/login" })}

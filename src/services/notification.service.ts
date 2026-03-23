@@ -68,7 +68,66 @@ export async function sendNotification(params: {
   message: string;
   link?: string;
 }) {
-  return prisma.notification.create({
-    data: params,
-  });
+  // Check user preferences
+  const { isChannelEnabled } = await import("@/services/notification-preference.service");
+
+  // 1. Create in-app notification (if enabled)
+  const inAppEnabled = await isChannelEnabled(params.userId, params.type, "inApp");
+  let notification = null;
+  if (inAppEnabled) {
+    notification = await prisma.notification.create({
+      data: params,
+    });
+  }
+
+  // 2. Send email (if enabled, non-blocking)
+  const emailEnabled = await isChannelEnabled(params.userId, params.type, "email");
+  if (emailEnabled) {
+    sendNotificationEmail(params).catch((err) =>
+      console.error("[notification-email] error:", err)
+    );
+  }
+
+  return notification;
+}
+
+// ─── Email Sending (internal) ───────────────────────────────────────
+
+async function sendNotificationEmail(params: {
+  tenantId: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  link?: string;
+}) {
+  try {
+    const { sendEmail } = await import("@/lib/mailer");
+    const { renderNotificationEmail } = await import("@/lib/email-templates");
+
+    // Get user email
+    const user = await prisma.user.findUnique({
+      where: { id: params.userId },
+      select: { email: true, name: true },
+    });
+
+    if (!user?.email) return;
+
+    const html = renderNotificationEmail({
+      title: params.title,
+      message: params.message,
+      link: params.link,
+      type: params.type,
+    });
+
+    await sendEmail({
+      to: user.email,
+      subject: `[U-Exam] ${params.title}`,
+      html,
+      tenantId: params.tenantId,
+    });
+  } catch (err) {
+    // Email failure should never block notification creation
+    console.warn("[notification-email] Failed to send:", err);
+  }
 }

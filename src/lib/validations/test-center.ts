@@ -25,6 +25,7 @@ export const createTestCenterSchema = z.object({
   description: z.string().optional(),
   imageUrl: z.string().url().optional().or(z.literal("")),
   managerId: z.string().uuid().optional(),
+  allowedIps: z.array(z.string()).optional(),
 });
 
 export const updateTestCenterSchema = createTestCenterSchema.partial();

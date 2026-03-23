@@ -17,12 +17,12 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { imageUrl: true },
+      select: { faceImageUrl: true },
     });
 
     return NextResponse.json({
       success: true,
-      data: { imageUrl: user?.imageUrl ?? null },
+      data: { imageUrl: user?.faceImageUrl ?? null },
     });
   } catch (error) {
     return handleApiError(error);
@@ -38,10 +38,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { image } = body;
+    const { image, descriptor } = body;
 
     if (!image || typeof image !== "string") {
       throw new AppError("VALIDATION_ERROR", "กรุณาถ่ายรูปใบหน้า", 400);
+    }
+
+    // Validate face descriptor if provided (128-element Float32Array)
+    if (descriptor && (!Array.isArray(descriptor) || descriptor.length !== 128)) {
+      throw new AppError("VALIDATION_ERROR", "Face descriptor ต้องเป็น array 128 ตัวเลข", 400);
     }
 
     // Extract base64 data (remove data:image/jpeg;base64, prefix)
@@ -62,15 +67,34 @@ export async function POST(request: NextRequest) {
 
     const imageUrl = `/uploads/faces/${filename}`;
 
-    // Update user record
+    // Update face image (separate from profile avatar)
     await prisma.user.update({
       where: { id: session.user.id },
-      data: { imageUrl },
+      data: { faceImageUrl: imageUrl },
     });
+
+    // Save face descriptor to CandidateProfile if provided
+    const hasDescriptor = descriptor && Array.isArray(descriptor) && descriptor.length === 128;
+    console.log("[face-image] descriptor received:", hasDescriptor, "length:", descriptor?.length);
+    if (hasDescriptor) {
+      try {
+        await prisma.candidateProfile.upsert({
+          where: { userId: session.user.id },
+          update: { faceDescriptor: descriptor },
+          create: {
+            userId: session.user.id,
+            faceDescriptor: descriptor,
+          },
+        });
+        console.log("[face-image] Descriptor saved to DB successfully");
+      } catch (dbErr) {
+        console.error("[face-image] Failed to save descriptor:", dbErr);
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      data: { imageUrl },
+      data: { imageUrl, hasDescriptor: !!descriptor },
     });
   } catch (error) {
     return handleApiError(error);

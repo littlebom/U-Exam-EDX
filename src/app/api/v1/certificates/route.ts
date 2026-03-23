@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/rbac";
 import { listCertificates, issueCertificate } from "@/services/certificate.service";
+import { sendNotification } from "@/services/notification.service";
 import { handleApiError } from "@/lib/errors";
 import { z } from "zod";
 
@@ -40,6 +41,20 @@ export async function POST(req: NextRequest) {
       ...data,
       expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
     });
+
+    // Send notification to candidate (non-blocking)
+    try {
+      await sendNotification({
+        tenantId: session.tenantId,
+        userId: data.candidateId,
+        type: "CERTIFICATE_ISSUED",
+        title: "ใบรับรองของคุณพร้อมแล้ว",
+        message: `หมายเลข ${result.certificateNumber}`,
+        link: "/profile/certificates",
+      });
+    } catch {
+      // Notification failure should not block certificate issuance
+    }
 
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (error) {

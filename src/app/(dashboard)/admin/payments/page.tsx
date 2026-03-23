@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useList } from "@/hooks/use-api";
 import { useQuery } from "@tanstack/react-query";
+import { PaymentDetailDialog } from "@/components/payment/payment-detail-dialog";
 
 interface PaymentItem {
   id: string;
@@ -157,6 +158,7 @@ function formatDate(dateStr: string) {
 export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
+  const [detailPaymentId, setDetailPaymentId] = useState<string | null>(null);
 
   const params: Record<string, string | number> = { page, perPage: 50 };
   if (statusFilter !== "all") params.status = statusFilter;
@@ -316,7 +318,7 @@ export default function PaymentsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setDetailPaymentId(payment.id)}>
                             <Eye className="mr-2 h-4 w-4" />
                             ดูรายละเอียด
                           </DropdownMenuItem>
@@ -353,6 +355,13 @@ export default function PaymentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Payment Detail Dialog */}
+      <PaymentDetailDialog
+        open={!!detailPaymentId}
+        onOpenChange={(open) => !open && setDetailPaymentId(null)}
+        paymentId={detailPaymentId}
+      />
     </div>
   );
 }

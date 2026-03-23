@@ -1,17 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import {
-  Camera,
-  Users,
-  ShieldCheck,
-  ShieldAlert,
-  Ban,
-  Eye,
-  Send,
-  AlertTriangle,
-  Loader2,
-} from "lucide-react";
+import { Eye, Users, AlertTriangle, ShieldCheck, Loader2, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,222 +10,174 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 
-type ProctoringItem = {
-  id: string;
-  status: string;
-  candidateName: string;
-  candidateEmail: string;
+// ─── Types ──────────────────────────────────────────────────────────
+
+interface ScheduleProctoring {
+  scheduleId: string;
   examTitle: string;
-  startedAt: string | null;
-  eventCount: number;
+  startDate: string;
+  endDate: string;
+  testCenterName: string | null;
+  totalSessions: number;
+  monitoring: number;
+  flagged: number;
+  reviewed: number;
   incidentCount: number;
-  webcamEnabled: boolean;
-};
-
-function getStatusConfig(status: string) {
-  switch (status) {
-    case "MONITORING":
-      return {
-        label: "ปกติ",
-        dotClass: "bg-green-500",
-        badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-      };
-    case "FLAGGED":
-      return {
-        label: "ตรวจพบ",
-        dotClass: "bg-yellow-500",
-        badgeClass: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-      };
-    case "REVIEWED":
-      return {
-        label: "ตรวจสอบแล้ว",
-        dotClass: "bg-blue-500",
-        badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-      };
-    default:
-      return {
-        label: status,
-        dotClass: "bg-gray-500",
-        badgeClass: "bg-gray-100 text-gray-800",
-      };
-  }
 }
 
-export default function ProctoringPage() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["proctoring-sessions"],
+// ─── Page ───────────────────────────────────────────────────────────
+
+export default function ProctoringDashboardPage() {
+  const { data: schedules, isLoading } = useQuery<ScheduleProctoring[]>({
+    queryKey: ["proctoring-schedules"],
     queryFn: async () => {
-      const res = await fetch("/api/v1/proctoring");
+      const res = await fetch("/api/v1/proctoring?view=schedules");
       const json = await res.json();
-      return json;
+      return json.data ?? [];
     },
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 15000,
   });
 
-  const sessions: ProctoringItem[] = data?.data ?? [];
-  const total = data?.meta?.total ?? 0;
-  const normalCount = sessions.filter((s) => s.status === "MONITORING").length;
-  const flaggedCount = sessions.filter((s) => s.status === "FLAGGED").length;
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const totalSessions = schedules?.reduce((sum, s) => sum + s.totalSessions, 0) ?? 0;
+  const totalFlagged = schedules?.reduce((sum, s) => sum + s.flagged, 0) ?? 0;
+  const totalIncidents = schedules?.reduce((sum, s) => sum + s.incidentCount, 0) ?? 0;
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div>
+      {/* Header */}
+      <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold tracking-tight">
           คุมสอบออนไลน์ — Live Monitor
         </h1>
         <p className="text-sm text-muted-foreground">
-          ติดตามผู้สอบแบบเรียลไทม์ ตรวจจับพฤติกรรมต้องสงสัย
+          เลือกรอบสอบเพื่อติดตามผู้สอบแบบเรียลไทม์
         </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Summary Stats */}
+      <div className="grid gap-4 sm:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardDescription className="text-sm font-medium">
-              กำลังสอบ
-            </CardDescription>
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-100 dark:bg-blue-900/30">
-              <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">รอบสอบ</span>
+              <Monitor className="h-5 w-5 text-muted-foreground/50" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{total}</div>
+            <p className="mt-1 text-2xl font-bold">{schedules?.length ?? 0}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardDescription className="text-sm font-medium">
-              ปกติ
-            </CardDescription>
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-green-100 dark:bg-green-900/30">
-              <ShieldCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">กำลังสอบ</span>
+              <Users className="h-5 w-5 text-muted-foreground/50" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{normalCount}</div>
+            <p className="mt-1 text-2xl font-bold text-green-600">{totalSessions}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardDescription className="text-sm font-medium">
-              ตรวจพบ
-            </CardDescription>
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
-              <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">ตรวจพบ</span>
+              <AlertTriangle className="h-5 w-5 text-amber-500/50" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{flaggedCount}</div>
+            <p className="mt-1 text-2xl font-bold text-amber-600">{totalFlagged}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardDescription className="text-sm font-medium">
-              Incidents
-            </CardDescription>
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-red-100 dark:bg-red-900/30">
-              <Ban className="h-4 w-4 text-red-600 dark:text-red-400" />
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Incidents</span>
+              <ShieldCheck className="h-5 w-5 text-red-500/50" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {sessions.reduce((sum, s) => sum + s.incidentCount, 0)}
-            </div>
+            <p className="mt-1 text-2xl font-bold text-red-600">{totalIncidents}</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Webcam Grid */}
-      {sessions.length === 0 ? (
+      {/* Schedule List */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : !schedules || schedules.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Camera className="mb-3 h-12 w-12 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              ไม่มีผู้สอบในขณะนี้
-            </p>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+            <Eye className="h-10 w-10 mb-3 opacity-50" />
+            <p className="font-medium">ไม่มีรอบสอบที่กำลังดำเนินการ</p>
+            <p className="text-sm">เมื่อมีผู้สอบเริ่มทำข้อสอบ จะแสดงที่นี่</p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {sessions.map((session) => {
-            const statusConfig = getStatusConfig(session.status);
-            return (
-              <Card key={session.id} className="overflow-hidden">
-                <CardContent className="p-0">
-                  {/* Webcam Placeholder */}
-                  <div className="relative flex aspect-video items-center justify-center bg-gray-200 dark:bg-gray-800">
-                    <Camera className="h-12 w-12 text-gray-400 dark:text-gray-600" />
-                    {session.eventCount > 0 && (
-                      <div className="absolute top-2 right-2">
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "gap-1",
-                            session.status === "FLAGGED"
-                              ? "bg-red-600 text-white dark:bg-red-700"
-                              : "bg-yellow-500 text-white dark:bg-yellow-600"
-                          )}
-                        >
-                          <AlertTriangle className="h-3 w-3" />
-                          {session.eventCount}
-                        </Badge>
-                      </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {schedules.map((schedule) => (
+            <Link
+              key={schedule.scheduleId}
+              href={`/admin/proctoring/${schedule.scheduleId}`}
+            >
+              <Card className="hover:border-primary/50 hover:shadow-md transition-all cursor-pointer h-full">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base line-clamp-1">
+                    {schedule.examTitle}
+                  </CardTitle>
+                  <CardDescription>
+                    {new Date(schedule.startDate).toLocaleDateString("th-TH", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}{" "}
+                    {new Date(schedule.startDate).toLocaleTimeString("th-TH", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                    {" — "}
+                    {new Date(schedule.endDate).toLocaleTimeString("th-TH", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {schedule.testCenterName && (
+                    <p className="text-xs text-muted-foreground mb-3">
+                      📍 {schedule.testCenterName}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="secondary" className="gap-1">
+                      <Users className="h-3 w-3" />
+                      {schedule.totalSessions} คน
+                    </Badge>
+                    {schedule.monitoring > 0 && (
+                      <Badge variant="secondary" className="gap-1 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                        🟢 {schedule.monitoring} ปกติ
+                      </Badge>
                     )}
-                    <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-1">
-                      <span className={cn("h-2 w-2 rounded-full", statusConfig.dotClass)} />
-                      <span className="text-xs font-medium text-white">
-                        {statusConfig.label}
-                      </span>
-                    </div>
+                    {schedule.flagged > 0 && (
+                      <Badge variant="secondary" className="gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                        🔴 {schedule.flagged} ตรวจพบ
+                      </Badge>
+                    )}
+                    {schedule.incidentCount > 0 && (
+                      <Badge variant="secondary" className="gap-1 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                        ⚠️ {schedule.incidentCount} incidents
+                      </Badge>
+                    )}
                   </div>
 
-                  {/* Student Info */}
-                  <div className="space-y-3 p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold">{session.candidateName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {session.examTitle}
-                        </p>
-                      </div>
-                      <Badge variant="secondary" className={statusConfig.badgeClass}>
-                        {statusConfig.label}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Events: {session.eventCount} | Incidents: {session.incidentCount}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1 gap-1.5">
-                        <Eye className="h-3.5 w-3.5" />
-                        ดูรายละเอียด
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="flex-1 gap-1.5"
-                      >
-                        <Send className="h-3.5 w-3.5" />
-                        บังคับส่ง
-                      </Button>
-                    </div>
+                  <div className="mt-3 flex justify-end">
+                    <Button variant="outline" size="sm" className="gap-1.5 text-xs" tabIndex={-1}>
+                      <Eye className="h-3 w-3" />
+                      เข้าดู
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
-            );
-          })}
+            </Link>
+          ))}
         </div>
       )}
     </div>

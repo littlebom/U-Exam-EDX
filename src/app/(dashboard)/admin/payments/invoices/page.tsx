@@ -133,7 +133,12 @@ export default function InvoicesPage() {
                       {formatDate(invoice.issuedAt)}
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => window.open(`/api/v1/invoices/${invoice.id}/pdf`, "_blank")}
+                      >
                         <FileDown className="h-4 w-4" />
                       </Button>
                     </TableCell>

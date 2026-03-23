@@ -29,6 +29,8 @@ interface CreateScheduleData {
   location?: string | null;
   testCenterId?: string | null;
   roomId?: string | null;
+  registrationFee?: number;
+  settings?: Record<string, unknown> | null;
 }
 
 interface UpdateScheduleData {
@@ -41,6 +43,8 @@ interface UpdateScheduleData {
   location?: string | null;
   testCenterId?: string | null;
   roomId?: string | null;
+  registrationFee?: number;
+  settings?: Record<string, unknown> | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +169,8 @@ export async function createSchedule(
       location: data.location ?? null,
       testCenterId: data.testCenterId ?? null,
       roomId: data.roomId ?? null,
+      registrationFee: data.registrationFee ?? 0,
+      settings: data.settings ? (data.settings as Prisma.InputJsonValue) : undefined,
     },
   });
 
@@ -188,8 +194,15 @@ export async function updateSchedule(
     throw errors.notFound("ไม่พบตารางสอบ");
   }
 
-  // Don't allow updating COMPLETED or CANCELLED schedules
+  // COMPLETED/CANCELLED: allow updating only settings (e.g. certificate template)
   if (existing.status === "COMPLETED" || existing.status === "CANCELLED") {
+    if (data.settings !== undefined) {
+      await prisma.examSchedule.update({
+        where: { id: scheduleId },
+        data: { settings: data.settings as Prisma.InputJsonValue },
+      });
+      return getSchedule(tenantId, scheduleId);
+    }
     throw errors.validation(
       "ไม่สามารถแก้ไขตารางสอบที่มีสถานะ COMPLETED หรือ CANCELLED ได้"
     );
@@ -238,6 +251,12 @@ export async function updateSchedule(
     updatePayload.room = data.roomId
       ? { connect: { id: data.roomId } }
       : { disconnect: true };
+  }
+  if (data.registrationFee !== undefined) {
+    updatePayload.registrationFee = data.registrationFee;
+  }
+  if (data.settings !== undefined) {
+    updatePayload.settings = data.settings as Prisma.InputJsonValue;
   }
 
   await prisma.examSchedule.update({

@@ -3,6 +3,7 @@ import { errors } from "@/lib/errors";
 
 export interface SessionContext {
   userId: string;
+  userName: string;
   tenantId: string;
   tenantName: string;
   roleId: string;
@@ -23,6 +24,7 @@ export async function getSessionTenant(): Promise<SessionContext> {
 
   return {
     userId: session.user.id,
+    userName: session.user.name ?? "",
     tenantId: session.tenant.id,
     tenantName: session.tenant.name,
     roleId: session.role?.id ?? "",

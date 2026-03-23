@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { sendNotification } from "@/services/notification.service";
 import type {
   CreatePaymentInput,
   PaymentFilter,
@@ -201,6 +202,36 @@ export async function processPayment(
       },
     });
 
+    // Send notification to candidate
+    try {
+      const paymentWithDetails = await tx.payment.findUniqueOrThrow({
+        where: { id },
+        include: {
+          registration: {
+            select: {
+              examSchedule: {
+                select: { exam: { select: { title: true } } },
+              },
+            },
+          },
+        },
+      });
+
+      const examTitle =
+        paymentWithDetails.registration.examSchedule.exam.title;
+
+      await sendNotification({
+        tenantId,
+        userId: updatedPayment.candidateId,
+        type: "PAYMENT_COMPLETED",
+        title: "ชำระเงินสำเร็จ",
+        message: `การชำระเงินค่าสมัครสอบ "${examTitle}" จำนวน ${updatedPayment.amount} บาท เสร็จสมบูรณ์แล้ว`,
+        link: "/profile/wallet",
+      });
+    } catch {
+      // Non-critical: don't fail payment if notification fails
+    }
+
     return updatedPayment;
   });
 }
@@ -229,4 +260,31 @@ export async function getPaymentStats(tenantId: string) {
     failed,
     totalRevenue: revenueResult._sum.amount ?? 0,
   };
+}
+
+// ─── Stripe Helper Functions ────────────────────────────────────────
+
+/** Store Stripe Checkout Session ID on a Payment record */
+export async function updatePaymentGatewayRef(paymentId: string, gatewayRef: string) {
+  return prisma.payment.update({
+    where: { id: paymentId },
+    data: { gatewayRef },
+  });
+}
+
+/** Mark a payment as FAILED (e.g., Stripe checkout expired or async payment failed) */
+export async function markPaymentFailed(tenantId: string, paymentId: string) {
+  const payment = await prisma.payment.findFirst({
+    where: { id: paymentId, tenantId },
+  });
+
+  if (!payment || payment.status !== "PENDING") return;
+
+  await prisma.payment.update({
+    where: { id: paymentId },
+    data: {
+      status: "FAILED",
+      failedAt: new Date(),
+    },
+  });
 }

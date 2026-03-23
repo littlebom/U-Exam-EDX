@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Award, Download, Share2, QrCode, Loader2 } from "lucide-react";
+import { Award, Download, Share2, Loader2 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { toast } from "sonner";
 
 function getStatusBadge(status: string) {
   switch (status) {
@@ -54,6 +56,32 @@ function formatDate(dateStr: string | null | undefined) {
     year: "numeric",
     month: "short",
     day: "numeric",
+  });
+}
+
+async function downloadPdf(certId: string, certNumber: string) {
+  try {
+    const res = await fetch(`/api/v1/profile/certificates/${certId}/pdf`);
+    if (!res.ok) {
+      toast.error("ดาวน์โหลดไม่สำเร็จ");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${certNumber}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    toast.error("เกิดข้อผิดพลาด");
+  }
+}
+
+function shareCertificate(certNumber: string) {
+  const url = `${window.location.origin}/verify/certificate/${certNumber}`;
+  navigator.clipboard.writeText(url).then(() => {
+    toast.success("คัดลอกลิงก์ตรวจสอบแล้ว");
   });
 }
 
@@ -156,20 +184,32 @@ export default function CandidateCertificatesPage() {
                   </div>
                 </div>
 
-                {/* QR Code Placeholder */}
-                <div className="flex items-center justify-center rounded-md border border-dashed p-4">
-                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <QrCode className="h-12 w-12" />
-                    <span className="text-xs">QR Verify</span>
-                  </div>
+                {/* QR Code */}
+                <div className="flex items-center justify-center rounded-md border p-4">
+                  <QRCodeSVG
+                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/verify/certificate/${cert.certificateNumber}`}
+                    size={96}
+                    level="M"
+                    fgColor="#741717"
+                  />
                 </div>
               </CardContent>
               <CardFooter className="gap-2 border-t pt-4">
-                <Button variant="outline" size="sm" className="flex-1 gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-1.5"
+                  onClick={() => downloadPdf(cert.id, cert.certificateNumber)}
+                >
                   <Download className="h-4 w-4" />
                   ดาวน์โหลด PDF
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-1.5"
+                  onClick={() => shareCertificate(cert.certificateNumber)}
+                >
                   <Share2 className="h-4 w-4" />
                   แชร์
                 </Button>

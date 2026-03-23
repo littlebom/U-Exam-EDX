@@ -387,6 +387,7 @@ export default function ExamSchedulePage() {
                   schedule={schedule}
                   onEdit={handleEdit}
                   onCancel={setCancelTarget}
+                  onSetCertificate={handleEdit}
                 />
               ))}
             </div>

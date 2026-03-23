@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { startExam } from "@/services/exam-session.service";
 import { handleApiError, AppError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
+import { getClientIp, isIpAllowed } from "@/lib/ip-utils";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -38,7 +39,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // 2. Check time window for online exam
     const schedule = await prisma.examSchedule.findUnique({
       where: { id: id },
-      select: { testCenterId: true, startDate: true, endDate: true },
+      select: {
+        testCenterId: true,
+        startDate: true,
+        endDate: true,
+        settings: true,
+        testCenter: { select: { allowedIps: true } },
+      },
     });
 
     if (schedule && !schedule.testCenterId) {
@@ -51,15 +58,43 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
+    // 3. Check IP restriction (Onsite exam with requireIpCheck enabled)
+    if (schedule?.testCenterId) {
+      const settings = schedule.settings as Record<string, unknown> | null;
+      const checkinSettings = settings?.checkin as Record<string, unknown> | undefined;
+      const requireIpCheck = !!(checkinSettings?.requireIpCheck);
+
+      if (requireIpCheck) {
+        const clientIp = getClientIp(request);
+        const allowedIps = schedule.testCenter?.allowedIps as string[] | null;
+
+        if (!isIpAllowed(clientIp, allowedIps)) {
+          throw new AppError(
+            "FORBIDDEN",
+            `ไม่สามารถเข้าสอบจาก IP นี้ได้ (${clientIp ?? "unknown"}) — กรุณาใช้เครือข่ายของศูนย์สอบ`,
+            403
+          );
+        }
+      }
+    }
+
     // ─── Call existing service ────────────────────────────────────
+
+    const clientIp = getClientIp(request);
 
     const result = await startExam(candidateId, {
       examScheduleId: id,
-      ipAddress:
-        request.headers.get("x-forwarded-for") ??
-        request.headers.get("x-real-ip") ??
-        undefined,
+      ipAddress: clientIp,
       userAgent: request.headers.get("user-agent") ?? undefined,
+    });
+
+    // Audit log
+    const { logExamEvent } = await import("@/services/audit-log.service");
+    logExamEvent("EXAM_START", {
+      userId: candidateId,
+      target: `ExamSession:${result.id}`,
+      ipAddress: clientIp,
+      detail: { scheduleId: id },
     });
 
     return NextResponse.json({ success: true, data: result });

@@ -11,7 +11,16 @@ export async function GET(req: NextRequest, context: RouteContext) {
     const { scheduleId } = await context.params;
     const result = await getCheckInStatus(session.tenantId, scheduleId);
 
-    return NextResponse.json({ success: true, data: result });
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...result,
+        staff: {
+          id: session.userId,
+          name: session.userName ?? "เจ้าหน้าที่",
+        },
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

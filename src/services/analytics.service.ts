@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { extractPlainText } from "@/lib/content-utils";
+import { cached } from "@/lib/cache";
 import type {
   OverviewFilter,
   ScoreDistributionFilter,
@@ -7,10 +8,25 @@ import type {
   TrendFilter,
 } from "@/lib/validations/analytics";
 
+// ─── Date Filter Helper ─────────────────────────────────────────────
+
+function buildDateFilter(dateFrom?: Date, dateTo?: Date) {
+  if (!dateFrom && !dateTo) return {};
+  const filter: Record<string, Date> = {};
+  if (dateFrom) filter.gte = dateFrom;
+  if (dateTo) filter.lte = dateTo;
+  return { createdAt: filter };
+}
+
 // ─── Overview Stats ──────────────────────────────────────────────────
 
 export async function getOverviewStats(tenantId: string, filters: OverviewFilter) {
-  const { examId } = filters;
+  const cacheKey = `analytics:overview:${tenantId}:${JSON.stringify(filters)}`;
+  return cached(cacheKey, 300, () => _getOverviewStats(tenantId, filters));
+}
+
+async function _getOverviewStats(tenantId: string, filters: OverviewFilter) {
+  const { examId, dateFrom, dateTo } = filters;
 
   // Build where clause for grades
   const gradeWhere = {
@@ -21,6 +37,7 @@ export async function getOverviewStats(tenantId: string, filters: OverviewFilter
         examSchedule: { examId },
       },
     }),
+    ...buildDateFilter(dateFrom, dateTo),
   };
 
   // Get all completed/published grades
@@ -128,7 +145,7 @@ export async function getScoreDistribution(
   tenantId: string,
   filters: ScoreDistributionFilter
 ) {
-  const { examId, buckets } = filters;
+  const { examId, buckets, dateFrom, dateTo } = filters;
 
   const grades = await prisma.grade.findMany({
     where: {
@@ -139,6 +156,7 @@ export async function getScoreDistribution(
           examSchedule: { examId },
         },
       }),
+      ...buildDateFilter(dateFrom, dateTo),
     },
     select: {
       percentage: true,
@@ -176,7 +194,8 @@ export async function getItemAnalysis(
   tenantId: string,
   filters: ItemAnalysisFilter
 ) {
-  const { examId, page, perPage } = filters;
+  const { examId, page, perPage, dateFrom, dateTo } = filters;
+  void dateFrom; void dateTo; // Item analysis filters by question, not by date
 
   // Get questions with their answers from completed sessions
   const questionWhere = {
@@ -340,23 +359,35 @@ function calculateDiscrimination(
 // ─── Monthly Trends ──────────────────────────────────────────────────
 
 export async function getMonthlyTrends(tenantId: string, filters: TrendFilter) {
-  const { months } = filters;
+  const cacheKey = `analytics:trends:${tenantId}:${JSON.stringify(filters)}`;
+  return cached(cacheKey, 600, () => _getMonthlyTrends(tenantId, filters));
+}
+
+async function _getMonthlyTrends(tenantId: string, filters: TrendFilter) {
+  const { months, examId, dateFrom, dateTo } = filters;
 
   // Calculate date range
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setMonth(startDate.getMonth() - months);
+  const endDate = dateTo ?? new Date();
+  const startDate = dateFrom ?? new Date(new Date().setMonth(new Date().getMonth() - months));
 
   // Get all grades within the date range
   const grades = await prisma.grade.findMany({
     where: {
       tenantId,
       status: { in: ["COMPLETED", "PUBLISHED"] },
+      ...(examId && {
+        session: {
+          examSchedule: { examId },
+        },
+      }),
       session: {
         submittedAt: {
           gte: startDate,
           lte: endDate,
         },
+        ...(examId && {
+          examSchedule: { examId },
+        }),
       },
     },
     select: {

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
 import type { Prisma } from "@/generated/prisma";
+import { emitProctoringEvent, emitCandidateEvent } from "@/lib/sse-emitter";
 
 // ─── Start Proctoring Session ────────────────────────────────────────
 
@@ -22,6 +23,131 @@ export async function startProctoringSession(
       status: "MONITORING",
     },
   });
+}
+
+// ─── Get Active Schedules with Proctoring Stats ─────────────────────
+
+export async function getActiveSchedulesWithProctoring() {
+  // Find schedules with IN_PROGRESS exam sessions
+  const schedules = await prisma.examSchedule.findMany({
+    where: {
+      examSessions: {
+        some: { status: "IN_PROGRESS" },
+      },
+    },
+    include: {
+      exam: { select: { id: true, title: true } },
+      testCenter: { select: { id: true, name: true } },
+      _count: {
+        select: {
+          examSessions: { where: { status: "IN_PROGRESS" } },
+        },
+      },
+    },
+    orderBy: { startDate: "desc" },
+  });
+
+  // Get proctoring stats per schedule
+  const result = await Promise.all(
+    schedules.map(async (schedule) => {
+      const procStats = await prisma.proctoringSession.groupBy({
+        by: ["status"],
+        where: {
+          examSession: {
+            examScheduleId: schedule.id,
+            status: "IN_PROGRESS",
+          },
+        },
+        _count: true,
+      });
+
+      const incidentCount = await prisma.incident.count({
+        where: {
+          proctoringSession: {
+            examSession: {
+              examScheduleId: schedule.id,
+            },
+          },
+        },
+      });
+
+      const monitoring = procStats.find((s) => s.status === "MONITORING")?._count ?? 0;
+      const flagged = procStats.find((s) => s.status === "FLAGGED")?._count ?? 0;
+      const reviewed = procStats.find((s) => s.status === "REVIEWED")?._count ?? 0;
+
+      return {
+        scheduleId: schedule.id,
+        examTitle: schedule.exam.title,
+        startDate: schedule.startDate,
+        endDate: schedule.endDate,
+        testCenterName: schedule.testCenter?.name ?? null,
+        totalSessions: schedule._count.examSessions,
+        monitoring,
+        flagged,
+        reviewed,
+        incidentCount,
+      };
+    })
+  );
+
+  return result;
+}
+
+// ─── Get Sessions by Schedule ───────────────────────────────────────
+
+export async function getSessionsBySchedule(
+  scheduleId: string,
+  filters: { status?: string; page?: number; perPage?: number } = {}
+) {
+  const { status, page = 1, perPage = 50 } = filters;
+
+  const where: Record<string, unknown> = {
+    examSession: {
+      examScheduleId: scheduleId,
+      status: "IN_PROGRESS",
+    },
+  };
+  if (status) where.status = status;
+
+  const [total, sessions] = await Promise.all([
+    prisma.proctoringSession.count({ where }),
+    prisma.proctoringSession.findMany({
+      where,
+      include: {
+        examSession: {
+          select: {
+            id: true,
+            status: true,
+            startedAt: true,
+            candidate: { select: { id: true, name: true, email: true, imageUrl: true } },
+          },
+        },
+        _count: {
+          select: { proctoringEvents: true, incidents: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * perPage,
+      take: perPage,
+    }),
+  ]);
+
+  return {
+    data: sessions.map((s) => ({
+      id: s.id,
+      examSessionId: s.examSessionId,
+      status: s.status,
+      webcamEnabled: s.webcamEnabled,
+      candidateId: s.examSession.candidate.id,
+      candidateName: s.examSession.candidate.name,
+      candidateEmail: s.examSession.candidate.email,
+      candidateImage: s.examSession.candidate.imageUrl,
+      startedAt: s.examSession.startedAt,
+      eventCount: s._count.proctoringEvents,
+      incidentCount: s._count.incidents,
+    })),
+    meta: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
+  };
 }
 
 // ─── Get Active Proctoring Sessions ──────────────────────────────────
@@ -124,7 +250,28 @@ export async function logProctoringEvent(
       where: { id: proctoringSessionId },
       data: { status: "FLAGGED" },
     });
+
+    // Emit status change to admin dashboard
+    emitProctoringEvent({
+      event: "session-update",
+      data: { sessionId: proctoringSessionId, status: "FLAGGED", highEvents },
+      sessionId: proctoringSessionId,
+    });
   }
+
+  // Emit new event to admin dashboard
+  emitProctoringEvent({
+    event: "new-event",
+    data: {
+      id: event.id,
+      proctoringSessionId,
+      type: event.type,
+      severity: event.severity,
+      screenshot: event.screenshot,
+      timestamp: event.timestamp,
+    },
+    sessionId: proctoringSessionId,
+  });
 
   return event;
 }
@@ -198,7 +345,26 @@ export async function createIncident(
         where: { id: session.examSessionId },
         data: { status: "TIMED_OUT", submittedAt: new Date() },
       });
+
+      // Notify candidate to force submit via SSE
+      emitCandidateEvent(session.examSessionId, {
+        event: "force-submit",
+        data: { reason: data.description, action: "TERMINATE" },
+      });
     }
+
+    // Emit incident to admin dashboard
+    emitProctoringEvent({
+      event: "new-incident",
+      data: {
+        id: incident.id,
+        proctoringSessionId,
+        type: incident.type,
+        action: incident.action,
+        description: incident.description,
+      },
+      sessionId: proctoringSessionId,
+    });
 
     return incident;
   });

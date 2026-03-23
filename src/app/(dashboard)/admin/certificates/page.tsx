@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Award,
   Plus,
@@ -38,6 +39,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { CertificateDetailDialog } from "@/components/certificate/certificate-detail-dialog";
+import { RevokeCertificateDialog } from "@/components/certificate/revoke-certificate-dialog";
+import { IssueCertificateDialog } from "@/components/certificate/issue-certificate-dialog";
 
 type CertificateRow = {
   id: string;
@@ -99,7 +104,35 @@ function formatDate(dateStr: string | null | undefined) {
   });
 }
 
+async function downloadPdf(certId: string, certNumber: string) {
+  try {
+    const res = await fetch(`/api/v1/certificates/${certId}/pdf`);
+    if (!res.ok) {
+      toast.error("ดาวน์โหลดไม่สำเร็จ");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${certNumber}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    toast.error("เกิดข้อผิดพลาด");
+  }
+}
+
 export default function DashboardCertificatesPage() {
+  const [issueOpen, setIssueOpen] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<{
+    id: string;
+    number: string;
+  } | null>(null);
+
+  const queryClient = useQueryClient();
+
   const { data, isLoading } = useQuery({
     queryKey: ["certificates"],
     queryFn: async () => {
@@ -113,14 +146,33 @@ export default function DashboardCertificatesPage() {
   const total = data?.meta?.total ?? 0;
 
   const activeCount = certificates.filter((c) => c.status === "ACTIVE").length;
-  const expiredCount = certificates.filter((c) => c.status === "EXPIRED").length;
-  const revokedCount = certificates.filter((c) => c.status === "REVOKED").length;
+  const expiredCount = certificates.filter(
+    (c) => c.status === "EXPIRED"
+  ).length;
+  const revokedCount = certificates.filter(
+    (c) => c.status === "REVOKED"
+  ).length;
 
   const stats = [
     { title: "ออกแล้ว", value: total, icon: Award, color: "text-primary" },
-    { title: "Active", value: activeCount, icon: CheckCircle2, color: "text-green-600" },
-    { title: "หมดอายุ", value: expiredCount, icon: Clock, color: "text-red-600" },
-    { title: "เพิกถอน", value: revokedCount, icon: XCircle, color: "text-gray-600" },
+    {
+      title: "Active",
+      value: activeCount,
+      icon: CheckCircle2,
+      color: "text-green-600",
+    },
+    {
+      title: "หมดอายุ",
+      value: expiredCount,
+      icon: Clock,
+      color: "text-red-600",
+    },
+    {
+      title: "เพิกถอน",
+      value: revokedCount,
+      icon: XCircle,
+      color: "text-gray-600",
+    },
   ];
 
   if (isLoading) {
@@ -143,12 +195,18 @@ export default function DashboardCertificatesPage() {
             จัดการใบรับรองและ Digital Badge ทั้งหมด
           </p>
         </div>
-        <Link href="/admin/certificates/templates">
-          <Button size="sm" className="gap-1.5">
-            <Plus className="h-4 w-4" />
-            สร้างเทมเพลต
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setIssueOpen(true)}>
+            <Award className="h-4 w-4" />
+            ออกใบรับรอง
           </Button>
-        </Link>
+          <Link href="/admin/certificates/templates">
+            <Button size="sm" className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              สร้างเทมเพลต
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
@@ -174,9 +232,7 @@ export default function DashboardCertificatesPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">รายการใบรับรอง</CardTitle>
-          <CardDescription>
-            ใบรับรองทั้งหมด {total} ใบ
-          </CardDescription>
+          <CardDescription>ใบรับรองทั้งหมด {total} ใบ</CardDescription>
         </CardHeader>
         <CardContent>
           {certificates.length === 0 ? (
@@ -235,16 +291,30 @@ export default function DashboardCertificatesPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setDetailId(cert.id)}
+                          >
                             <Eye className="mr-2 h-4 w-4" />
                             ดูรายละเอียด
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              downloadPdf(cert.id, cert.certificateNumber)
+                            }
+                          >
                             <FileDown className="mr-2 h-4 w-4" />
                             ดาวน์โหลด PDF
                           </DropdownMenuItem>
                           {cert.status === "ACTIVE" && (
-                            <DropdownMenuItem className="text-red-600">
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() =>
+                                setRevokeTarget({
+                                  id: cert.id,
+                                  number: cert.certificateNumber,
+                                })
+                              }
+                            >
                               <Ban className="mr-2 h-4 w-4" />
                               เพิกถอน
                             </DropdownMenuItem>
@@ -259,6 +329,38 @@ export default function DashboardCertificatesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Detail Dialog */}
+      <CertificateDetailDialog
+        open={!!detailId}
+        onOpenChange={(open) => {
+          if (!open) setDetailId(null);
+        }}
+        certificateId={detailId}
+      />
+
+      {/* Revoke Dialog */}
+      <RevokeCertificateDialog
+        open={!!revokeTarget}
+        onOpenChange={(open) => {
+          if (!open) setRevokeTarget(null);
+        }}
+        certificateId={revokeTarget?.id ?? null}
+        certificateNumber={revokeTarget?.number ?? ""}
+        onRevoked={() => {
+          setRevokeTarget(null);
+          queryClient.invalidateQueries({ queryKey: ["certificates"] });
+        }}
+      />
+
+      {/* Issue Dialog */}
+      <IssueCertificateDialog
+        open={issueOpen}
+        onOpenChange={setIssueOpen}
+        onIssued={() =>
+          queryClient.invalidateQueries({ queryKey: ["certificates"] })
+        }
+      />
     </div>
   );
 }

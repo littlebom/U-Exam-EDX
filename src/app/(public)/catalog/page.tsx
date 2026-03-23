@@ -19,9 +19,11 @@ import { useQuery } from "@tanstack/react-query";
 
 interface CatalogItem {
   id: string;
+  examType: string;
   startDate: string;
   endDate: string;
   maxCandidates: number | null;
+  registrationFee: number;
   status: string;
   location: string | null;
   exam: {
@@ -187,10 +189,15 @@ export default function CatalogPage() {
                         ที่นั่งว่าง {Math.max(remaining, 0)}/{item.maxCandidates ?? "ไม่จำกัด"}
                       </span>
                     </div>
-                    {item.location && (
-                      <p className="text-xs">{item.location}</p>
-                    )}
+                    {item.examType === "ONLINE" ? (
+                      <p className="text-xs text-blue-600 font-medium">🌐 สอบออนไลน์</p>
+                    ) : item.location ? (
+                      <p className="text-xs">📍 {item.location}</p>
+                    ) : null}
                     <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="font-normal">
+                        {item.examType === "ONLINE" ? "Online" : "Onsite"}
+                      </Badge>
                       <Badge variant="outline" className="font-normal">
                         {item.exam.mode === "PUBLIC" ? "สอบสาธารณะ" : "องค์กร"}
                       </Badge>
@@ -201,8 +208,10 @@ export default function CatalogPage() {
                   </div>
                 </CardContent>
                 <CardFooter className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    คะแนนผ่าน: {item.exam.passingScore ?? "—"}%
+                  <span className="text-sm font-semibold text-primary">
+                    {item.registrationFee > 0
+                      ? `฿${item.registrationFee.toLocaleString()}`
+                      : "ฟรี"}
                   </span>
                   <Button
                     size="sm"

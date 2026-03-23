@@ -5,6 +5,7 @@ import {
   createQuestion,
   updateQuestion,
   deleteQuestion,
+  bulkUpdateQuestions,
 } from "@/services/question.service";
 import { createQuestionSchema, updateQuestionSchema } from "@/lib/validations/question";
 import type { ActionResult } from "@/types";
@@ -60,6 +61,24 @@ export async function deleteQuestionAction(
     const session = await requirePermission("question:delete");
     await deleteQuestion(session.tenantId, questionId, session.userId);
     return { success: true };
+  } catch (error) {
+    return handleActionError(error);
+  }
+}
+
+export async function bulkUpdateQuestionsAction(
+  questionIds: string[],
+  data: { status?: string; questionGroupId?: string | null }
+): Promise<ActionResult<{ updated: number }>> {
+  try {
+    const session = await requirePermission("question:update");
+    const result = await bulkUpdateQuestions(
+      session.tenantId,
+      questionIds,
+      data,
+      session.userId
+    );
+    return { success: true, data: result };
   } catch (error) {
     return handleActionError(error);
   }

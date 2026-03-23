@@ -1,13 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import {
   Wallet,
-  Plus,
-  CheckCircle2,
-  ArrowDownCircle,
-  ArrowUpCircle,
+  CreditCard,
+  Loader2,
+  FileDown,
   RotateCcw,
-  Link2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,110 +26,52 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 
-// --- Mock Wallet Data ---
-
-type TransactionType = "TOPUP" | "PAYMENT" | "REFUND";
-
-type WalletTransaction = {
+interface PaymentHistoryItem {
   id: string;
-  date: string;
-  description: string;
-  type: TransactionType;
   amount: number;
-  balance: number;
-};
+  method: string;
+  status: string;
+  paidAt: string | null;
+  createdAt: string;
+  registration: {
+    id: string;
+    examSchedule: {
+      id: string;
+      exam: { id: string; title: string };
+    };
+  };
+  invoice: { id: string; invoiceNumber: string } | null;
+}
 
-const walletBalance = 5250.0;
+interface PaymentHistoryResponse {
+  success: boolean;
+  data: PaymentHistoryItem[];
+  meta: { total: number; page: number; perPage: number; totalPages: number };
+}
 
-const transactions: WalletTransaction[] = [
-  {
-    id: "txn_001",
-    date: "2026-03-10T10:30:00.000Z",
-    description: "เติมเงินผ่าน PromptPay",
-    type: "TOPUP",
-    amount: 2000,
-    balance: 5250,
-  },
-  {
-    id: "txn_002",
-    date: "2026-03-08T14:15:00.000Z",
-    description: "ชำระค่าสมัครสอบ Cybersecurity Essentials",
-    type: "PAYMENT",
-    amount: -1500,
-    balance: 3250,
-  },
-  {
-    id: "txn_003",
-    date: "2026-03-05T09:00:00.000Z",
-    description: "คืนเงินค่าสมัครสอบ Data Science Fundamentals",
-    type: "REFUND",
-    amount: 1200,
-    balance: 4750,
-  },
-  {
-    id: "txn_004",
-    date: "2026-02-28T16:45:00.000Z",
-    description: "ชำระค่าสมัครสอบ Software Engineering Principles",
-    type: "PAYMENT",
-    amount: -1800,
-    balance: 3550,
-  },
-  {
-    id: "txn_005",
-    date: "2026-02-20T11:00:00.000Z",
-    description: "เติมเงินผ่าน Credit Card",
-    type: "TOPUP",
-    amount: 3000,
-    balance: 5350,
-  },
-  {
-    id: "txn_006",
-    date: "2026-02-15T13:30:00.000Z",
-    description: "ชำระค่าสมัครสอบ TechCorp Assessment",
-    type: "PAYMENT",
-    amount: -900,
-    balance: 2350,
-  },
-  {
-    id: "txn_007",
-    date: "2026-02-10T08:20:00.000Z",
-    description: "เติมเงินผ่าน PromptPay",
-    type: "TOPUP",
-    amount: 1500,
-    balance: 3250,
-  },
-  {
-    id: "txn_008",
-    date: "2026-02-01T10:00:00.000Z",
-    description: "ชำระค่าสมัครสอบ TechCorp Onboarding",
-    type: "PAYMENT",
-    amount: -500,
-    balance: 1750,
-  },
-];
-
-function getTypeBadge(type: TransactionType) {
-  switch (type) {
-    case "TOPUP":
+function getStatusBadge(status: string) {
+  switch (status) {
+    case "COMPLETED":
       return (
         <Badge
           variant="secondary"
           className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
         >
-          เติมเงิน
+          ชำระแล้ว
         </Badge>
       );
-    case "PAYMENT":
+    case "PENDING":
       return (
         <Badge
           variant="secondary"
-          className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+          className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
         >
-          ชำระ
+          รอชำระ
         </Badge>
       );
-    case "REFUND":
+    case "REFUNDED":
       return (
         <Badge
           variant="secondary"
@@ -139,22 +80,40 @@ function getTypeBadge(type: TransactionType) {
           คืนเงิน
         </Badge>
       );
+    case "FAILED":
+      return (
+        <Badge
+          variant="secondary"
+          className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+        >
+          ล้มเหลว
+        </Badge>
+      );
     default:
-      return <Badge variant="outline">{type}</Badge>;
+      return <Badge variant="outline">{status}</Badge>;
   }
+}
+
+function getMethodLabel(method: string) {
+  const labels: Record<string, string> = {
+    PROMPTPAY: "PromptPay",
+    CREDIT_CARD: "Credit Card",
+    BANK_TRANSFER: "โอนเงิน",
+    E_WALLET: "e-Wallet",
+  };
+  return labels[method] || method;
 }
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
     currency: "THB",
-    minimumFractionDigits: 2,
-  }).format(Math.abs(amount));
+    minimumFractionDigits: 0,
+  }).format(amount);
 }
 
 function formatDate(dateStr: string) {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString("th-TH", {
+  return new Date(dateStr).toLocaleDateString("th-TH", {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -162,6 +121,33 @@ function formatDate(dateStr: string) {
 }
 
 export default function WalletPage() {
+  const [page, setPage] = useState(1);
+
+  const { data: result, isLoading } = useQuery<PaymentHistoryResponse>({
+    queryKey: ["candidate-payments", page],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        perPage: "20",
+      });
+      const res = await fetch(`/api/v1/candidate/payments?${params}`);
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+  });
+
+  const payments = result?.data ?? [];
+  const meta = result?.meta;
+
+  // Stats
+  const totalPaid = payments
+    .filter((p) => p.status === "COMPLETED")
+    .reduce((sum, p) => sum + p.amount, 0);
+  const completedCount = payments.filter(
+    (p) => p.status === "COMPLETED"
+  ).length;
+  const pendingCount = payments.filter((p) => p.status === "PENDING").length;
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -170,116 +156,209 @@ export default function WalletPage() {
           <Wallet className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">e-Wallet</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            ประวัติการชำระเงิน
+          </h1>
           <p className="text-sm text-muted-foreground">
-            จัดการยอดเงินและประวัติการทำรายการ
+            รายการชำระเงินค่าสมัครสอบทั้งหมดของคุณ
           </p>
         </div>
       </div>
 
-      {/* Balance Card + Connected Status */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {/* Balance Card */}
+      {/* Stats */}
+      <div className="grid gap-4 sm:grid-cols-3">
         <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="text-sm font-medium">
-              ยอดคงเหลือ
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-end justify-between">
-            <div className="text-3xl font-bold">
-              {new Intl.NumberFormat("th-TH", {
-                style: "currency",
-                currency: "THB",
-                minimumFractionDigits: 2,
-              }).format(walletBalance)}
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                ชำระเงินรวม
+              </span>
+              <span className="text-xl font-bold">
+                {formatCurrency(totalPaid)}
+              </span>
             </div>
-            <Button size="sm" className="gap-1.5">
-              <Plus className="h-4 w-4" />
-              เติมเงิน
-            </Button>
           </CardContent>
         </Card>
-
-        {/* Connection Status Card */}
         <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="text-sm font-medium">
-              สถานะการเชื่อมต่อ
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-end justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                <Link2 className="h-4 w-4 text-green-600" />
-              </div>
-              <div>
-                <div className="text-sm font-semibold">เชื่อมต่อกับ U-Exam</div>
-                <div className="text-xs text-muted-foreground">
-                  ใช้ชำระค่าสมัครสอบได้
-                </div>
-              </div>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                ชำระสำเร็จ
+              </span>
+              <span className="text-xl font-bold text-green-600">
+                {completedCount}
+              </span>
             </div>
-            <Badge
-              variant="secondary"
-              className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-            >
-              <CheckCircle2 className="mr-1 h-3 w-3" />
-              เชื่อมต่อแล้ว
-            </Badge>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">รอชำระ</span>
+              <span className="text-xl font-bold text-amber-600">
+                {pendingCount}
+              </span>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Transaction History */}
+      {/* Payment History Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">ประวัติการทำรายการ</CardTitle>
+          <CardTitle className="text-base">รายการทั้งหมด</CardTitle>
           <CardDescription>
-            รายการทั้งหมด {transactions.length} รายการ
+            {meta
+              ? `ทั้งหมด ${meta.total} รายการ`
+              : "กำลังโหลด..."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>วันที่</TableHead>
-                <TableHead>รายการ</TableHead>
-                <TableHead className="text-center">ประเภท</TableHead>
-                <TableHead className="text-right">จำนวน</TableHead>
-                <TableHead className="text-right">ยอดคงเหลือ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.map((txn) => (
-                <TableRow key={txn.id}>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDate(txn.date)}
-                  </TableCell>
-                  <TableCell className="max-w-[250px] truncate font-medium">
-                    {txn.description}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {getTypeBadge(txn.type)}
-                  </TableCell>
-                  <TableCell
-                    className={cn(
-                      "text-right font-medium",
-                      txn.amount > 0
-                        ? "text-green-600"
-                        : "text-red-600"
-                    )}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : payments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <CreditCard className="h-10 w-10 mb-3 opacity-50" />
+              <p className="font-medium">ยังไม่มีประวัติการชำระเงิน</p>
+              <p className="text-sm mt-1">
+                เมื่อคุณสมัครสอบและชำระเงิน รายการจะปรากฏที่นี่
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>วันที่</TableHead>
+                      <TableHead>ข้อสอบ</TableHead>
+                      <TableHead>วิธีชำระ</TableHead>
+                      <TableHead className="text-right">จำนวน</TableHead>
+                      <TableHead>สถานะ</TableHead>
+                      <TableHead className="w-10" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {payments.map((payment) => (
+                      <TableRow key={payment.id}>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {formatDate(payment.paidAt || payment.createdAt)}
+                        </TableCell>
+                        <TableCell className="font-medium text-sm max-w-[200px] truncate">
+                          {payment.registration.examSchedule.exam.title}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {getMethodLabel(payment.method)}
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            "text-right font-medium",
+                            payment.status === "REFUNDED"
+                              ? "text-blue-600"
+                              : ""
+                          )}
+                        >
+                          {payment.status === "REFUNDED" && "-"}
+                          {formatCurrency(payment.amount)}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                        <TableCell>
+                          {payment.invoice && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() =>
+                                window.open(
+                                  `/api/v1/invoices/${payment.invoice!.id}/pdf`,
+                                  "_blank"
+                                )
+                              }
+                              title="ดาวน์โหลดใบเสร็จ"
+                            >
+                              <FileDown className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="space-y-3 md:hidden">
+                {payments.map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="rounded-lg border p-4 space-y-2"
                   >
-                    {txn.amount > 0 ? "+" : "-"}
-                    {formatCurrency(txn.amount)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency(txn.balance)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    <div className="flex items-start justify-between">
+                      <p className="font-medium text-sm">
+                        {payment.registration.examSchedule.exam.title}
+                      </p>
+                      {getStatusBadge(payment.status)}
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {formatDate(payment.paidAt || payment.createdAt)} ·{" "}
+                        {getMethodLabel(payment.method)}
+                      </span>
+                      <span className="font-semibold">
+                        {formatCurrency(payment.amount)}
+                      </span>
+                    </div>
+                    {payment.invoice && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-1.5"
+                        onClick={() =>
+                          window.open(
+                            `/api/v1/invoices/${payment.invoice!.id}/pdf`,
+                            "_blank"
+                          )
+                        }
+                      >
+                        <FileDown className="h-3.5 w-3.5" />
+                        ดาวน์โหลดใบเสร็จ
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Pagination */}
+          {meta && meta.totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                หน้า {meta.page} จาก {meta.totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  ก่อนหน้า
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= meta.totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  ถัดไป
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

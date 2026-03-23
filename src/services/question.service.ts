@@ -397,7 +397,48 @@ export async function deleteQuestion(
 }
 
 // ---------------------------------------------------------------------------
-// 6. bulkDeleteQuestions — Bulk archive
+// 6. Bulk Operations
 // ---------------------------------------------------------------------------
 
+export async function bulkUpdateQuestions(
+  tenantId: string,
+  questionIds: string[],
+  data: { status?: string; questionGroupId?: string | null },
+  changedById: string
+) {
+  if (questionIds.length === 0) return { updated: 0 };
+
+  // Verify all questions belong to tenant
+  const questions = await prisma.question.findMany({
+    where: { id: { in: questionIds }, tenantId },
+    select: { id: true, status: true },
+  });
+
+  const validIds = questions.map((q) => q.id);
+  if (validIds.length === 0) throw errors.notFound("ไม่พบข้อสอบที่เลือก");
+
+  const updateData: Record<string, unknown> = {};
+  if (data.status) updateData.status = data.status;
+  if (data.questionGroupId !== undefined) updateData.questionGroupId = data.questionGroupId || null;
+
+  await prisma.$transaction([
+    prisma.question.updateMany({
+      where: { id: { in: validIds } },
+      data: updateData,
+    }),
+    // Create history for each
+    ...validIds.map((qid) =>
+      prisma.questionHistory.create({
+        data: {
+          questionId: qid,
+          changedById,
+          changeType: data.status === "ARCHIVED" ? "ARCHIVED" : "UPDATED",
+          previousData: { bulkAction: true, ...data } as unknown as Prisma.InputJsonValue,
+        },
+      })
+    ),
+  ]);
+
+  return { updated: validIds.length };
+}
 

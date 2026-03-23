@@ -44,6 +44,7 @@ import { SeatPicker } from "@/components/seat-picker";
 interface ScheduleDetail {
   id: string;
   tenantId: string;
+  examType: string;
   startDate: string;
   endDate: string;
   registrationOpenDate: string | null;
@@ -51,6 +52,7 @@ interface ScheduleDetail {
   maxCandidates: number | null;
   status: string;
   location: string | null;
+  registrationFee: number;
   exam: {
     id: string;
     title: string;
@@ -144,9 +146,15 @@ export default function ExamDetailPage() {
       const json = await res.json();
 
       if (json.success) {
-        setRegistered(true);
-        toast.success("สมัครสอบสำเร็จ!");
-        setTimeout(() => router.push("/profile/registrations"), 2000);
+        const regId = json.data?.id;
+        if (json.data?.requiresPayment && regId) {
+          toast.success("สมัครสอบสำเร็จ! กรุณาชำระเงิน");
+          setTimeout(() => router.push(`/profile/registrations/${regId}/payment`), 1500);
+        } else {
+          setRegistered(true);
+          toast.success("สมัครสอบสำเร็จ!");
+          setTimeout(() => router.push("/profile/registrations"), 2000);
+        }
       } else {
         toast.error(json.error?.message || "เกิดข้อผิดพลาดในการสมัครสอบ");
       }
@@ -368,7 +376,11 @@ export default function ExamDetailPage() {
               )}
               <div className="rounded-lg bg-muted/50 p-4 text-center">
                 <p className="text-xs text-muted-foreground">ค่าสมัคร</p>
-                <p className="text-2xl font-bold text-green-600">ฟรี</p>
+                <p className={`text-2xl font-bold ${schedule.registrationFee > 0 ? "text-primary" : "text-green-600"}`}>
+                  {schedule.registrationFee > 0
+                    ? `฿${schedule.registrationFee.toLocaleString()}`
+                    : "ฟรี"}
+                </p>
               </div>
             </CardContent>
           </Card>

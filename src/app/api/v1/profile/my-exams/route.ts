@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { handleApiError, AppError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
+import { resolveProctoringSettings } from "@/lib/resolve-proctoring";
 
 // GET — list candidate's upcoming exams (confirmed registrations)
 export async function GET() {
@@ -76,17 +77,25 @@ export async function GET() {
     const items = registrations.map((reg) => {
       const schedule = reg.examSchedule;
       const examSession = sessionMap.get(schedule.id);
-      const isOnline = !schedule.testCenterId;
+      const examType = (schedule as unknown as Record<string, string>).examType ?? "ONSITE";
+      const isOnline = examType === "ONLINE";
       const isWithinTimeWindow =
         now >= schedule.startDate && now <= schedule.endDate;
 
       const canStartExam =
-        isOnline &&
         isWithinTimeWindow &&
         schedule.status === "ACTIVE" &&
         (!examSession ||
           examSession.status === "IN_PROGRESS" ||
           !["SUBMITTED", "TIMED_OUT"].includes(examSession.status));
+
+      // Check if face verify is required from schedule settings
+      const settings = schedule.settings as Record<string, unknown> | null;
+      const checkinSettings = settings?.checkin as Record<string, unknown> | undefined;
+      const requireFaceVerify = !!(checkinSettings?.requireFaceVerify);
+
+      // Resolve proctoring from schedule settings
+      const proctoringSettings = resolveProctoringSettings(settings);
 
       return {
         registrationId: reg.id,
@@ -104,6 +113,8 @@ export async function GET() {
         examSessionId: examSession?.id ?? null,
         canStartExam,
         isWithinTimeWindow,
+        requireFaceVerify,
+        proctoring: proctoringSettings,
       };
     });
 

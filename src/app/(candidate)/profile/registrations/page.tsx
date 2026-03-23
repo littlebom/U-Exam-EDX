@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Calendar,
   ExternalLink,
+  CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -238,6 +239,7 @@ export default function RegistrationHistoryPage() {
                       <TableHead>สถานะ</TableHead>
                       <TableHead>การชำระเงิน</TableHead>
                       <TableHead>Voucher</TableHead>
+                      <TableHead className="w-[100px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -265,6 +267,16 @@ export default function RegistrationHistoryPage() {
                         <TableCell>{getPaymentBadge(r.paymentStatus)}</TableCell>
                         <TableCell className="text-xs font-mono text-muted-foreground">
                           {r.voucher?.code ?? "—"}
+                        </TableCell>
+                        <TableCell>
+                          {r.paymentStatus === "PENDING" && r.status !== "CANCELLED" && (
+                            <Button size="sm" variant="default" className="gap-1.5" asChild>
+                              <Link href={`/profile/registrations/${r.id}/payment`}>
+                                <CreditCard className="h-3.5 w-3.5" />
+                                ชำระเงิน
+                              </Link>
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -300,6 +312,14 @@ export default function RegistrationHistoryPage() {
                         </span>
                       )}
                     </div>
+                    {r.paymentStatus === "PENDING" && r.status !== "CANCELLED" && (
+                      <Button size="sm" className="w-full gap-1.5 mt-2" asChild>
+                        <Link href={`/profile/registrations/${r.id}/payment`}>
+                          <CreditCard className="h-3.5 w-3.5" />
+                          ชำระเงิน
+                        </Link>
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>

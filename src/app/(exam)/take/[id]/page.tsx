@@ -13,6 +13,9 @@ import {
   Send,
   AlertTriangle,
   Loader2,
+  ShieldAlert,
+  Maximize,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +47,7 @@ import { toast } from "sonner";
 // ─── Constants ──────────────────────────────────────────────────────
 
 const AUTO_SAVE_INTERVAL = 30_000; // 30 seconds
+const MAX_VIOLATIONS = 3; // จำนวนครั้งสูงสุดที่อนุญาตให้ออกจากหน้าสอบ
 
 const QUESTION_TYPE_LABELS: Record<string, string> = {
   MULTIPLE_CHOICE: "ปรนัย",
@@ -85,8 +89,14 @@ export default function ExamTakingPage({
   const { id: scheduleId } = use(params);
   const router = useRouter();
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [violationCount, setViolationCount] = useState(0);
+  const [showViolationWarning, setShowViolationWarning] = useState(false);
+  const [isTerminated, setIsTerminated] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(true);
   const autoSaveRef = useRef<NodeJS.Timeout | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const violationRef = useRef(0); // ref to avoid stale closure
 
   const {
     session,
@@ -129,8 +139,12 @@ export default function ExamTakingPage({
         );
 
         if (!startRes.ok) {
-          const err = await startRes.json();
-          throw new Error(err.error || "ไม่สามารถเริ่มการสอบได้");
+          const errData = await startRes.json();
+          const errMsg =
+            typeof errData.error === "string"
+              ? errData.error
+              : errData.error?.message || "ไม่สามารถเริ่มการสอบได้";
+          throw new Error(errMsg);
         }
 
         const { data: sessionData } = await startRes.json();
@@ -229,10 +243,69 @@ export default function ExamTakingPage({
     }
   }, [markSaved]);
 
+  // ─── Fullscreen Management ─────────────────────────────────────
+
+  const enterFullscreen = useCallback(async () => {
+    try {
+      await document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+      setShowFullscreenPrompt(false);
+    } catch {
+      // Browser may block fullscreen without user gesture
+      setShowFullscreenPrompt(true);
+    }
+  }, []);
+
+  const exitFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  // ─── Violation Handler (auto-submit when max reached) ─────────
+
+  const handleViolation = useCallback(
+    async (type: string) => {
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+
+      // Log event
+      fetch(`/api/v1/profile/exam-sessions/${sid}/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+      }).catch(() => {});
+
+      // Increment violation count
+      const newCount = violationRef.current + 1;
+      violationRef.current = newCount;
+      setViolationCount(newCount);
+
+      if (newCount >= MAX_VIOLATIONS) {
+        // Terminate exam
+        setIsTerminated(true);
+        exitFullscreen();
+        await performAutoSave();
+        try {
+          await fetch(`/api/v1/profile/exam-sessions/${sid}/submit`, {
+            method: "POST",
+          });
+        } catch {
+          // Best effort
+        }
+        setSubmitted();
+      } else {
+        // Show warning
+        setShowViolationWarning(true);
+      }
+    },
+    [exitFullscreen, performAutoSave, setSubmitted]
+  );
+
   // ─── Anti-cheat Events ─────────────────────────────────────────
 
   useEffect(() => {
-    if (!session || isSubmitted) return;
+    if (!session || isSubmitted || isTerminated) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
 
@@ -244,11 +317,32 @@ export default function ExamTakingPage({
       }).catch(() => {});
     };
 
-    const handleBlur = () => logEvent("BLUR");
-    const handleFocus = () => logEvent("FOCUS");
+    // Tab switch / window blur → violation
     const handleVisibility = () => {
-      if (document.hidden) logEvent("TAB_SWITCH");
+      if (document.hidden) {
+        handleViolation("TAB_SWITCH");
+      }
     };
+
+    const handleBlur = () => {
+      // Only count as violation if not already hidden (avoid double-count)
+      if (!document.hidden) {
+        handleViolation("BLUR");
+      }
+    };
+
+    const handleFocus = () => logEvent("FOCUS");
+
+    // Fullscreen exit → violation
+    const handleFullscreenChange = () => {
+      const isNowFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isNowFullscreen);
+      if (!isNowFullscreen && !isTerminated) {
+        handleViolation("FULLSCREEN_EXIT");
+      }
+    };
+
+    // Block copy/paste/print/context menu
     const handleCopy = (e: ClipboardEvent) => {
       e.preventDefault();
       logEvent("COPY");
@@ -257,27 +351,56 @@ export default function ExamTakingPage({
       e.preventDefault();
       logEvent("PASTE");
     };
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Block Ctrl+C, Ctrl+V, Ctrl+P, F12
+      if (
+        (e.ctrlKey && (e.key === "c" || e.key === "v" || e.key === "p")) ||
+        (e.metaKey && (e.key === "c" || e.key === "v" || e.key === "p")) ||
+        e.key === "F12"
+      ) {
+        e.preventDefault();
+        logEvent("COPY");
+      }
+    };
 
+    // Block beforeunload
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("blur", handleBlur);
     window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibility);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("copy", handleCopy);
     document.addEventListener("paste", handlePaste);
+    document.addEventListener("contextmenu", handleContextMenu);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("blur", handleBlur);
       window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener("copy", handleCopy);
       document.removeEventListener("paste", handlePaste);
+      document.removeEventListener("contextmenu", handleContextMenu);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [session, isSubmitted]);
+  }, [session, isSubmitted, isTerminated, handleViolation]);
 
   // ─── Handlers ──────────────────────────────────────────────────
 
   const handleTimeout = useCallback(async () => {
     const sid = sessionIdRef.current;
     if (!sid) return;
+
+    exitFullscreen();
 
     // Save remaining answers before timeout
     await performAutoSave();
@@ -292,7 +415,7 @@ export default function ExamTakingPage({
 
     setSubmitted();
     toast.error("หมดเวลาสอบ ระบบส่งข้อสอบให้อัตโนมัติ");
-  }, [performAutoSave, setSubmitted]);
+  }, [exitFullscreen, performAutoSave, setSubmitted]);
 
   const handleSubmit = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -313,6 +436,7 @@ export default function ExamTakingPage({
         throw new Error(err.error || "เกิดข้อผิดพลาด");
       }
 
+      exitFullscreen();
       setSubmitted();
       toast.success("ส่งข้อสอบเรียบร้อยแล้ว");
       setShowSubmitDialog(false);
@@ -322,7 +446,7 @@ export default function ExamTakingPage({
       );
       setSubmitting(false);
     }
-  }, [performAutoSave, setSubmitting, setSubmitted]);
+  }, [exitFullscreen, performAutoSave, setSubmitting, setSubmitted]);
 
   const handleAnswer = useCallback(
     (value: unknown) => {
@@ -406,6 +530,52 @@ export default function ExamTakingPage({
     );
   }
 
+  // ─── Terminated State (anti-cheat violation) ───────────────────
+
+  if (isTerminated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Card className="max-w-lg text-center border-destructive">
+          <CardHeader>
+            <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+              <ShieldAlert className="h-8 w-8 text-destructive" />
+            </div>
+            <CardTitle className="text-destructive text-xl">
+              การสอบสิ้นสุดลง
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              การสอบ &quot;{examTitle}&quot; ถูกยุติโดยอัตโนมัติ
+              เนื่องจากตรวจพบว่าคุณออกจากหน้าสอบครบ {MAX_VIOLATIONS} ครั้ง
+            </p>
+            <div className="rounded-lg bg-destructive/5 border border-destructive/20 p-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">จำนวนครั้งที่ออกจากหน้าสอบ</span>
+                <span className="font-medium text-destructive">{violationCount}/{MAX_VIOLATIONS} ครั้ง</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ข้อที่ตอบแล้ว</span>
+                <span className="font-medium">{answeredCount}/{totalQuestions} ข้อ</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">สถานะ</span>
+                <span className="font-medium text-destructive">ระบบส่งคำตอบอัตโนมัติ</span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              คำตอบที่บันทึกไว้ก่อนหน้าจะถูกส่งเข้าสู่ระบบตรวจ
+              หากมีข้อสงสัย กรุณาติดต่อผู้จัดสอบ
+            </p>
+            <Button onClick={() => router.push("/profile/my-exams")} className="w-full">
+              กลับหน้าหลัก
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (isSubmitted) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -438,6 +608,102 @@ export default function ExamTakingPage({
 
   return (
     <div className="flex h-screen flex-col">
+      {/* Fullscreen Prompt Overlay */}
+      {showFullscreenPrompt && !isFullscreen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <Card className="max-w-md text-center">
+            <CardHeader>
+              <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                <Maximize className="h-7 w-7 text-primary" />
+              </div>
+              <CardTitle>เข้าสู่โหมดเต็มหน้าจอ</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                ข้อสอบนี้ต้องทำในโหมดเต็มหน้าจอ เพื่อป้องกันการทุจริต
+                ระบบจะตรวจจับหากคุณออกจากหน้าสอบ
+              </p>
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium">กฎการสอบ</p>
+                    <ul className="mt-1 space-y-1 text-xs">
+                      <li>• ห้ามสลับ tab หรือเปิดหน้าต่างอื่น</li>
+                      <li>• ห้ามออกจากโหมดเต็มหน้าจอ</li>
+                      <li>• หากออกจากหน้าสอบครบ {MAX_VIOLATIONS} ครั้ง ระบบจะยุติการสอบทันที</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <Button onClick={enterFullscreen} className="w-full" size="lg">
+                <Maximize className="h-4 w-4 mr-2" />
+                เริ่มสอบ (เต็มหน้าจอ)
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Violation Warning Dialog */}
+      {showViolationWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <Card className="max-w-md text-center border-destructive animate-in fade-in zoom-in-95 duration-200">
+            <CardHeader>
+              <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+                <ShieldAlert className="h-7 w-7 text-destructive" />
+              </div>
+              <CardTitle className="text-destructive">
+                คำเตือน! ออกจากหน้าสอบ
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                ระบบตรวจพบว่าคุณออกจากหน้าสอบ
+              </p>
+              <div className="rounded-lg bg-destructive/5 border border-destructive/20 p-4">
+                <div className="flex items-center justify-center gap-3">
+                  {Array.from({ length: MAX_VIOLATIONS }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold",
+                        i < violationCount
+                          ? "bg-destructive text-destructive-foreground"
+                          : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {i < violationCount ? <XCircle className="h-5 w-5" /> : i + 1}
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-sm font-medium text-destructive">
+                  ครั้งที่ {violationCount} จาก {MAX_VIOLATIONS}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {MAX_VIOLATIONS - violationCount === 0
+                    ? "การสอบจะสิ้นสุดลง"
+                    : `เหลืออีก ${MAX_VIOLATIONS - violationCount} ครั้ง การสอบจะสิ้นสุดลง`}
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  setShowViolationWarning(false);
+                  enterFullscreen();
+                }}
+                className="w-full"
+                variant="destructive"
+                size="lg"
+              >
+                <Maximize className="h-4 w-4 mr-2" />
+                กลับเข้าสอบ (เต็มหน้าจอ)
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Violation Counter Badge (always visible in top bar) */}
       {/* Top Bar */}
       <div className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-4 shadow-sm">
         <div className="flex items-center gap-3">
@@ -447,6 +713,12 @@ export default function ExamTakingPage({
           {dirtyAnswers.size > 0 && (
             <Badge variant="outline" className="text-[10px] text-muted-foreground">
               ยังไม่บันทึก
+            </Badge>
+          )}
+          {violationCount > 0 && (
+            <Badge variant="destructive" className="text-[10px]">
+              <ShieldAlert className="h-3 w-3 mr-1" />
+              เตือน {violationCount}/{MAX_VIOLATIONS}
             </Badge>
           )}
         </div>

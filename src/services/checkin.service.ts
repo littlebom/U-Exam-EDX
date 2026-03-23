@@ -153,21 +153,32 @@ export async function getCheckInStatus(
 
   if (!schedule) throw errors.notFound("ไม่พบรอบสอบ");
 
-  // Count registrations vs checked-in vouchers
-  const [totalRegistered, checkedInCount, lateCount] = await Promise.all([
+  // Count registrations vs unique checked-in candidates (from ExamDayLog metadata.candidateId)
+  const [totalRegistered, checkinLogs, lateLogs] = await Promise.all([
     prisma.registration.count({
       where: { examScheduleId, tenantId, status: "CONFIRMED" },
     }),
-    prisma.voucher.count({
+    prisma.examDayLog.findMany({
       where: {
-        registration: { examScheduleId, tenantId },
-        isUsed: true,
+        examScheduleId,
+        tenantId,
+        type: { in: ["CHECKIN", "LATE_CHECKIN"] },
       },
+      select: { metadata: true },
     }),
     prisma.examDayLog.count({
       where: { examScheduleId, tenantId, type: "LATE_CHECKIN" },
     }),
   ]);
+
+  // Count unique candidates (avoid double-counting if scanned multiple times)
+  const uniqueCandidates = new Set(
+    checkinLogs
+      .map((l) => (l.metadata as Record<string, unknown>)?.candidateId)
+      .filter(Boolean)
+  );
+  const checkedInCount = uniqueCandidates.size;
+  const lateCount = lateLogs;
 
   // Get incidents
   const incidentCount = await prisma.examDayLog.count({
@@ -308,4 +319,96 @@ export async function getTodaySchedules(tenantId: string) {
     },
     orderBy: { startDate: "asc" },
   });
+}
+
+// ─── Check-in by Face Scan ──────────────────────────────────────────
+
+export async function checkInByFace(
+  tenantId: string,
+  examScheduleId: string,
+  candidateId: string,
+  operatorId?: string,
+  confidence?: number
+) {
+  // Find registration for this candidate + schedule
+  const registration = await prisma.registration.findFirst({
+    where: {
+      tenantId,
+      examScheduleId,
+      candidateId,
+      status: "CONFIRMED",
+    },
+    include: {
+      candidate: { select: { id: true, name: true, email: true } },
+      examSchedule: {
+        select: { id: true, startDate: true, exam: { select: { title: true } } },
+      },
+      testCenter: { select: { id: true, name: true } },
+      vouchers: {
+        where: { status: { in: ["VALID", "USED"] } },
+        take: 1,
+      },
+    },
+  });
+
+  if (!registration) {
+    throw errors.notFound("ไม่พบการสมัครสอบที่ยืนยันแล้วสำหรับผู้สอบคนนี้");
+  }
+
+  // Check if already checked in (via voucher)
+  const voucher = registration.vouchers[0];
+  if (voucher?.isUsed) {
+    return {
+      status: "ALREADY_CHECKED_IN",
+      message: "ผู้สอบคนนี้เช็คอินแล้ว",
+      candidate: registration.candidate,
+      seatNumber: registration.seatNumber,
+      usedAt: voucher.usedAt,
+    };
+  }
+
+  const now = new Date();
+
+  // Mark voucher as used if exists
+  if (voucher) {
+    await prisma.voucher.update({
+      where: { id: voucher.id },
+      data: { status: "USED", isUsed: true, usedAt: now },
+    });
+  }
+
+  // Determine if late
+  const startDate = new Date(registration.examSchedule.startDate);
+  const isLate = now > startDate;
+
+  // Log check-in event
+  await prisma.examDayLog.create({
+    data: {
+      tenantId,
+      examScheduleId,
+      testCenterId: registration.testCenter?.id,
+      createdById: operatorId,
+      type: isLate ? "LATE_CHECKIN" : "CHECKIN",
+      description: `${registration.candidate.name} เช็คอิน (Face Scan)${isLate ? " — มาสาย" : ""} — ที่นั่ง ${registration.seatNumber ?? "ไม่ระบุ"}`,
+      metadata: {
+        candidateId: registration.candidate.id,
+        candidateName: registration.candidate.name,
+        seatNumber: registration.seatNumber,
+        method: "FACE",
+        confidence: confidence ?? null,
+        isLate,
+      } as Prisma.InputJsonValue,
+    },
+  });
+
+  return {
+    status: isLate ? "LATE" : "SUCCESS",
+    message: isLate ? "เช็คอินสำเร็จ (มาสาย)" : "เช็คอินสำเร็จ",
+    candidate: registration.candidate,
+    seatNumber: registration.seatNumber,
+    examTitle: registration.examSchedule.exam.title,
+    testCenter: registration.testCenter,
+    checkedInAt: now,
+    method: "FACE",
+  };
 }

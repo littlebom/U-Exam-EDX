@@ -114,13 +114,16 @@ export async function createRegistration(tenantId: string, data: CreateRegistrat
   const maxCandidates = schedule.maxCandidates ?? Infinity;
   const isWaitingList = confirmedCount >= maxCandidates;
 
+  // Use schedule's registration fee if no amount specified, or amount is 0
+  const registrationAmount = data.amount > 0 ? data.amount : schedule.registrationFee;
+
   return prisma.registration.create({
     data: {
       tenantId,
       candidateId: data.candidateId,
       examScheduleId: data.examScheduleId,
       testCenterId: data.testCenterId,
-      amount: data.amount,
+      amount: registrationAmount,
       notes: data.notes,
       status: isWaitingList ? "WAITING_LIST" : "PENDING",
       waitingListOrder: isWaitingList ? confirmedCount - maxCandidates + 1 : null,
@@ -151,7 +154,7 @@ export async function updateRegistration(tenantId: string, id: string, data: Upd
     updateData.cancelledAt = new Date();
   }
 
-  return prisma.registration.update({
+  const result = await prisma.registration.update({
     where: { id },
     data: updateData,
     include: {
@@ -159,11 +162,60 @@ export async function updateRegistration(tenantId: string, id: string, data: Upd
       examSchedule: {
         select: {
           id: true,
+          startDate: true,
           exam: { select: { title: true } },
         },
       },
     },
   });
+
+  // ─── Send notification on status change ───
+  if (data.status && data.status !== existing.status) {
+    const examTitle = result.examSchedule?.exam?.title ?? "สอบ";
+    const candidateId = result.candidateId;
+
+    const statusMessages: Record<string, { type: string; title: string; message: string }> = {
+      CONFIRMED: {
+        type: "REGISTRATION_APPROVED",
+        title: "สมัครสอบได้รับอนุมัติ",
+        message: `การสมัครสอบวิชา "${examTitle}" ได้รับการอนุมัติแล้ว`,
+      },
+      WAITING_LIST: {
+        type: "REGISTRATION_APPROVED",
+        title: "อยู่ในรายชื่อสำรอง",
+        message: `การสมัครสอบวิชา "${examTitle}" อยู่ในรายชื่อสำรอง ระบบจะแจ้งเมื่อมีที่ว่าง`,
+      },
+      CANCELLED: {
+        type: "REGISTRATION_APPROVED",
+        title: "การสมัครสอบถูกยกเลิก",
+        message: `การสมัครสอบวิชา "${examTitle}" ถูกยกเลิก`,
+      },
+    };
+
+    const notif = statusMessages[data.status];
+    if (notif) {
+      // Audit log
+      import("@/services/audit-log.service").then(({ logAdminAction }) =>
+        logAdminAction(
+          data.status === "CONFIRMED" ? "REGISTRATION_APPROVE" : "REGISTRATION_CANCEL",
+          { userId: candidateId, tenantId, target: `Registration:${id}`, detail: { status: data.status, examTitle } }
+        )
+      );
+
+      import("@/services/notification.service").then(({ sendNotification }) =>
+        sendNotification({
+          tenantId,
+          userId: candidateId,
+          type: notif.type,
+          title: notif.title,
+          message: notif.message,
+          link: "/profile/registrations",
+        }).catch((err) => console.error("[registration-notification]", err))
+      );
+    }
+  }
+
+  return result;
 }
 
 export async function deleteRegistration(tenantId: string, id: string) {

@@ -32,17 +32,58 @@ export function FaceImageCard() {
     queryFn: async () => {
       const res = await fetch("/api/v1/profile/face-image");
       const json = await res.json();
-      return json.data as { imageUrl: string | null };
+      return (json.data as { imageUrl: string | null }) ?? { imageUrl: null };
     },
   });
 
-  // Upload mutation
+  // Upload mutation — computes face descriptor before uploading
   const uploadMutation = useMutation({
     mutationFn: async (image: string) => {
+      // Compute face descriptor client-side
+      let descriptor: number[] | undefined;
+      try {
+        console.log("[FaceImage] Loading face-api.js models...");
+        const faceapi = await import("face-api.js");
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+          faceapi.nets.faceLandmark68TinyNet.loadFromUri("/models"),
+          faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
+        ]);
+        console.log("[FaceImage] Models loaded successfully");
+
+        // Create image element from base64/data URL
+        const img = document.createElement("img");
+        img.crossOrigin = "anonymous";
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => {
+            console.log("[FaceImage] Image loaded:", img.naturalWidth, "x", img.naturalHeight);
+            resolve();
+          };
+          img.onerror = (e) => reject(new Error(`Image load failed: ${e}`));
+          img.src = image;
+        });
+
+        console.log("[FaceImage] Detecting face...");
+        const detection = await faceapi
+          .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 }))
+          .withFaceLandmarks(true)
+          .withFaceDescriptor();
+
+        if (detection) {
+          descriptor = Array.from(detection.descriptor);
+          console.log("[FaceImage] Descriptor computed:", descriptor.length, "values, score:", detection.detection.score.toFixed(3));
+        } else {
+          console.warn("[FaceImage] No face detected in image — uploading without descriptor");
+          toast.info("ไม่พบใบหน้าในรูป — จะบันทึกรูปแต่ไม่สามารถใช้สแกนใบหน้าได้");
+        }
+      } catch (err) {
+        console.error("[FaceImage] Descriptor computation failed:", err);
+      }
+
       const res = await fetch("/api/v1/profile/face-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image }),
+        body: JSON.stringify({ image, descriptor }),
       });
       if (!res.ok) {
         const json = await res.json();

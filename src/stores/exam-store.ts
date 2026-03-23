@@ -120,7 +120,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
     set({
       session,
       questions,
-      timeRemaining: session.timeRemaining ?? session.examSchedule.exam.duration * 60,
+      timeRemaining: session.timeRemaining || session.examSchedule.exam.duration * 60,
       isLoading: false,
     });
   },

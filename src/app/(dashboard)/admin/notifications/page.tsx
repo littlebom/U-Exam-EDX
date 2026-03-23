@@ -3,219 +3,248 @@
 import { useState } from "react";
 import {
   Bell,
-  CheckCircle,
+  CheckCircle2,
   CreditCard,
-  UserPlus,
   Award,
   AlertTriangle,
   Megaphone,
+  UserPlus,
   Clock,
+  Loader2,
   CheckCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 import {
-  MOCK_NOTIFICATIONS,
-  type MockNotification,
-  type NotificationType,
-} from "@/lib/mock-data/notifications";
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-function getNotificationIcon(type: NotificationType) {
+// ─── Types ──────────────────────────────────────────────────────────
+
+interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  readAt: string | null;
+  link: string | null;
+  createdAt: string;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+function getNotificationIcon(type: string) {
   switch (type) {
     case "EXAM_REMINDER":
-      return <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400" />;
+      return { icon: Clock, bg: "bg-blue-100 dark:bg-blue-900/30", color: "text-blue-600 dark:text-blue-400" };
     case "RESULT_PUBLISHED":
-      return (
-        <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-      );
+      return { icon: CheckCircle2, bg: "bg-green-100 dark:bg-green-900/30", color: "text-green-600 dark:text-green-400" };
+    case "PAYMENT_COMPLETED":
     case "PAYMENT_CONFIRMED":
-      return (
-        <CreditCard className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-      );
+      return { icon: CreditCard, bg: "bg-purple-100 dark:bg-purple-900/30", color: "text-purple-600 dark:text-purple-400" };
     case "REGISTRATION_APPROVED":
     case "REGISTRATION_WAITLIST":
-      return (
-        <UserPlus className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-      );
+      return { icon: UserPlus, bg: "bg-orange-100 dark:bg-orange-900/30", color: "text-orange-600 dark:text-orange-400" };
     case "CERTIFICATE_ISSUED":
-      return <Award className="h-5 w-5 text-amber-600 dark:text-amber-400" />;
+      return { icon: Award, bg: "bg-amber-100 dark:bg-amber-900/30", color: "text-amber-600 dark:text-amber-400" };
     case "EXAM_CANCELLED":
-      return (
-        <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-      );
+      return { icon: AlertTriangle, bg: "bg-red-100 dark:bg-red-900/30", color: "text-red-600 dark:text-red-400" };
     case "SYSTEM_ANNOUNCEMENT":
-      return (
-        <Megaphone className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-      );
+      return { icon: Megaphone, bg: "bg-gray-100 dark:bg-gray-900/30", color: "text-gray-600 dark:text-gray-400" };
     default:
-      return <Bell className="h-5 w-5 text-muted-foreground" />;
+      return { icon: Bell, bg: "bg-primary/10", color: "text-primary" };
   }
 }
 
-function getNotificationIconBg(type: NotificationType) {
-  switch (type) {
-    case "EXAM_REMINDER":
-      return "bg-blue-100 dark:bg-blue-900/30";
-    case "RESULT_PUBLISHED":
-      return "bg-green-100 dark:bg-green-900/30";
-    case "PAYMENT_CONFIRMED":
-      return "bg-purple-100 dark:bg-purple-900/30";
-    case "REGISTRATION_APPROVED":
-    case "REGISTRATION_WAITLIST":
-      return "bg-orange-100 dark:bg-orange-900/30";
-    case "CERTIFICATE_ISSUED":
-      return "bg-amber-100 dark:bg-amber-900/30";
-    case "EXAM_CANCELLED":
-      return "bg-red-100 dark:bg-red-900/30";
-    case "SYSTEM_ANNOUNCEMENT":
-      return "bg-gray-100 dark:bg-gray-900/30";
-    default:
-      return "bg-muted";
-  }
-}
-
-function formatTimeAgo(dateStr: string): string {
-  const now = new Date("2026-03-10T14:00:00.000Z");
+function timeAgo(dateStr: string) {
+  const now = new Date();
   const date = new Date(dateStr);
   const diffMs = now.getTime() - date.getTime();
-  const diffMinutes = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const diffMonths = Math.floor(diffDays / 30);
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
 
-  if (diffMinutes < 1) return "เมื่อสักครู่";
-  if (diffMinutes < 60) return `${diffMinutes} นาทีที่แล้ว`;
-  if (diffHours < 24) return `${diffHours} ชั่วโมงที่แล้ว`;
-  if (diffDays < 30) return `${diffDays} วันที่แล้ว`;
-  return `${diffMonths} เดือนที่แล้ว`;
+  if (diffMin < 1) return "เมื่อสักครู่";
+  if (diffMin < 60) return `${diffMin} นาทีที่แล้ว`;
+  if (diffHr < 24) return `${diffHr} ชั่วโมงที่แล้ว`;
+  if (diffDay < 7) return `${diffDay} วันที่แล้ว`;
+  return date.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
 }
 
-export default function NotificationsPage() {
-  const [notifications, setNotifications] =
-    useState<MockNotification[]>(MOCK_NOTIFICATIONS);
+// ─── Page ───────────────────────────────────────────────────────────
 
+export default function NotificationsPage() {
+  const [tab, setTab] = useState("all");
+  const queryClient = useQueryClient();
+
+  const { data: result, isLoading } = useQuery<{
+    data: NotificationItem[];
+    meta: { total: number };
+  }>({
+    queryKey: ["notifications", tab],
+    queryFn: async () => {
+      const params = new URLSearchParams({ perPage: "50" });
+      if (tab === "unread") params.set("unreadOnly", "true");
+      const res = await fetch(`/api/v1/notifications?${params}`);
+      return res.json();
+    },
+  });
+
+  const notifications = result?.data ?? [];
+  const filteredNotifications =
+    tab === "read"
+      ? notifications.filter((n) => n.isRead)
+      : notifications;
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-  const handleMarkAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
-  };
-
-  const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-  };
-
-  const renderNotificationList = (items: MockNotification[]) => {
-    if (items.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-          <Bell className="mb-3 h-10 w-10 opacity-30" />
-          <p className="text-sm">ไม่มีการแจ้งเตือน</p>
-        </div>
-      );
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      await fetch(`/api/v1/notifications/${id}`, { method: "PUT" });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notification-unread-count"] });
+    } catch {
+      toast.error("เกิดข้อผิดพลาด");
     }
+  };
 
-    return (
-      <div className="space-y-3">
-        {items.map((notification) => (
-          <Card
-            key={notification.id}
-            className={cn(
-              "cursor-pointer transition-colors hover:bg-accent/50",
-              !notification.isRead && "border-primary/20 bg-primary/[0.02]"
-            )}
-            onClick={() => handleMarkAsRead(notification.id)}
-          >
-            <CardContent className="flex items-start gap-4 p-4">
-              {/* Icon */}
-              <div
-                className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                  getNotificationIconBg(notification.type)
-                )}
-              >
-                {getNotificationIcon(notification.type)}
-              </div>
-
-              {/* Content */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <h3
-                    className={cn(
-                      "text-sm",
-                      !notification.isRead ? "font-semibold" : "font-medium"
-                    )}
-                  >
-                    {notification.title}
-                  </h3>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      {formatTimeAgo(notification.createdAt)}
-                    </span>
-                    {!notification.isRead && (
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500" />
-                    )}
-                  </div>
-                </div>
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                  {notification.message}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    );
+  const handleMarkAllRead = async () => {
+    try {
+      await fetch("/api/v1/notifications", { method: "PUT" });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notification-unread-count"] });
+      toast.success("อ่านทั้งหมดแล้ว");
+    } catch {
+      toast.error("เกิดข้อผิดพลาด");
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">การแจ้งเตือน</h1>
-          <p className="text-sm text-muted-foreground">
-            การแจ้งเตือนทั้งหมด {notifications.length} รายการ
-            {unreadCount > 0 && ` (ยังไม่อ่าน ${unreadCount})`}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+            <Bell className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">แจ้งเตือน</h1>
+            <p className="text-sm text-muted-foreground">
+              {unreadCount > 0
+                ? `คุณมี ${unreadCount} แจ้งเตือนที่ยังไม่ได้อ่าน`
+                : "ไม่มีแจ้งเตือนใหม่"}
+            </p>
+          </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          onClick={handleMarkAllRead}
-          disabled={unreadCount === 0}
-        >
-          <CheckCheck className="h-4 w-4" />
-          อ่านทั้งหมด
-        </Button>
+        {unreadCount > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={handleMarkAllRead}
+          >
+            <CheckCheck className="h-4 w-4" />
+            อ่านทั้งหมด
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="all">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="all">ทั้งหมด</TabsTrigger>
-          <TabsTrigger value="unread">ยังไม่อ่าน</TabsTrigger>
+          <TabsTrigger value="unread" className="gap-1">
+            ยังไม่อ่าน
+            {unreadCount > 0 && (
+              <Badge className="h-5 min-w-5 p-0 text-[10px] flex items-center justify-center ml-1">
+                {unreadCount}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="read">อ่านแล้ว</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="all">
-          {renderNotificationList(notifications)}
-        </TabsContent>
-
-        <TabsContent value="unread">
-          {renderNotificationList(notifications.filter((n) => !n.isRead))}
-        </TabsContent>
-
-        <TabsContent value="read">
-          {renderNotificationList(notifications.filter((n) => n.isRead))}
+        <TabsContent value={tab}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                {tab === "all" ? "แจ้งเตือนทั้งหมด" : tab === "unread" ? "ยังไม่อ่าน" : "อ่านแล้ว"}
+              </CardTitle>
+              <CardDescription>
+                {filteredNotifications.length} รายการ
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredNotifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <Bell className="h-10 w-10 mb-2 opacity-40" />
+                  <p className="text-sm">ไม่มีแจ้งเตือน</p>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {filteredNotifications.map((notif) => {
+                    const { icon: Icon, bg, color } = getNotificationIcon(notif.type);
+                    return (
+                      <div
+                        key={notif.id}
+                        className={cn(
+                          "flex items-start gap-3 py-3 px-2 rounded-md transition-colors",
+                          !notif.isRead && "bg-accent/50",
+                          "hover:bg-accent/30 cursor-pointer"
+                        )}
+                        onClick={() => {
+                          if (!notif.isRead) handleMarkAsRead(notif.id);
+                          if (notif.link) window.location.href = notif.link;
+                        }}
+                      >
+                        <div
+                          className={cn(
+                            "flex h-9 w-9 shrink-0 items-center justify-center rounded-md mt-0.5",
+                            bg
+                          )}
+                        >
+                          <Icon className={cn("h-4 w-4", color)} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className={cn("text-sm font-medium", !notif.isRead && "font-semibold")}>
+                              {notif.title}
+                            </p>
+                            {!notif.isRead && (
+                              <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                            {notif.message}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {timeAgo(notif.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

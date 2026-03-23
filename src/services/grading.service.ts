@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
+import { sendNotification } from "@/services/notification.service";
 import type { PaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
 import type {
@@ -247,21 +248,26 @@ export async function gradeAnswer(
   // Clamp score to maxScore
   const score = Math.min(input.score, gradeAnswer.maxScore);
 
-  return prisma.gradeAnswer.update({
-    where: { id: gradeAnswer.id },
-    data: {
-      score,
-      feedback: input.feedback,
-      gradedById: graderId,
-      isAutoGraded: false,
-      isCorrect: score >= gradeAnswer.maxScore,
-      rubricScores: input.rubricScores
-        ? (input.rubricScores as unknown as Prisma.InputJsonValue)
-        : undefined,
-      ...(input.gradingDurationMs !== undefined && {
-        gradingDurationMs: input.gradingDurationMs,
-      }),
-    },
+  return prisma.$transaction(async (tx) => {
+    await tx.gradeAnswer.update({
+      where: { id: gradeAnswer.id },
+      data: {
+        score,
+        feedback: input.feedback,
+        gradedById: graderId,
+        isAutoGraded: false,
+        isCorrect: score >= gradeAnswer.maxScore,
+        rubricScores: input.rubricScores
+          ? (input.rubricScores as unknown as Prisma.InputJsonValue)
+          : undefined,
+        ...(input.gradingDurationMs !== undefined && {
+          gradingDurationMs: input.gradingDurationMs,
+        }),
+      },
+    });
+
+    // Recalculate grade totals + check if fully graded
+    return recalculateGrade(tx, gradeId);
   });
 }
 
@@ -422,7 +428,26 @@ export async function adjustScore(
 export async function publishGrade(tenantId: string, gradeId: string) {
   const grade = await prisma.grade.findUnique({
     where: { id: gradeId },
-    select: { id: true, tenantId: true, status: true },
+    select: {
+      id: true,
+      tenantId: true,
+      status: true,
+      totalScore: true,
+      maxScore: true,
+      isPassed: true,
+      session: {
+        select: {
+          candidateId: true,
+          examSchedule: {
+            select: {
+              id: true,
+              settings: true,
+              exam: { select: { title: true } },
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!grade) throw errors.notFound("ไม่พบข้อมูลคะแนน");
@@ -431,7 +456,7 @@ export async function publishGrade(tenantId: string, gradeId: string) {
     throw errors.validation("ตรวจให้คะแนนยังไม่ครบ ไม่สามารถเผยแพร่ได้");
   }
 
-  return prisma.grade.update({
+  const updated = await prisma.grade.update({
     where: { id: gradeId },
     data: {
       status: "PUBLISHED",
@@ -439,6 +464,48 @@ export async function publishGrade(tenantId: string, gradeId: string) {
     },
     include: gradeListInclude,
   });
+
+  // Notify candidate
+  const examTitle = grade.session.examSchedule.exam.title;
+  sendNotification({
+    tenantId,
+    userId: grade.session.candidateId,
+    type: "RESULT_PUBLISHED",
+    title: "ผลสอบของคุณพร้อมแล้ว",
+    message: `${examTitle} — คะแนน ${grade.totalScore}/${grade.maxScore} (${grade.isPassed ? "ผ่าน" : "ไม่ผ่าน"})`,
+    link: "/profile/results",
+  }).catch((err) => console.error("[notification] publishGrade error:", err));
+
+  // Auto-issue certificate if passed and template is configured
+  if (grade.isPassed) {
+    try {
+      const schedSettings = grade.session.examSchedule.settings as Record<string, unknown> | null;
+      const templateId = schedSettings?.certificateTemplateId as string | undefined;
+      if (templateId) {
+        const { issueCertificate } = await import("@/services/certificate.service");
+        await issueCertificate(tenantId, {
+          templateId,
+          candidateId: grade.session.candidateId,
+          gradeId: grade.id,
+        });
+
+        // Notify certificate issued
+        sendNotification({
+          tenantId,
+          userId: grade.session.candidateId,
+          type: "CERTIFICATE_ISSUED",
+          title: "ใบรับรองของคุณพร้อมแล้ว",
+          message: `คุณได้รับใบรับรองสำหรับ ${examTitle}`,
+          link: "/profile/certificates",
+        }).catch(() => {});
+      }
+    } catch (err) {
+      // Certificate issue failure should not block grade publishing
+      console.error("[auto-certificate] error:", err);
+    }
+  }
+
+  return updated;
 }
 
 // ─── Publish Multiple Grades ────────────────────────────────────────

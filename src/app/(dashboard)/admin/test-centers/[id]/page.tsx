@@ -16,6 +16,8 @@ import {
   Pencil,
   Trash2,
   Loader2,
+  Shield,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -107,6 +109,7 @@ interface TestCenterDetail {
   operatingHours: string | null;
   description: string | null;
   rating: number;
+  allowedIps: string[] | null;
   manager: { id: string; name: string; email: string } | null;
   buildings: BuildingItem[];
   rooms: RoomSummary[];
@@ -154,6 +157,10 @@ export default function TestCenterDetailPage() {
   const [formBuildingFloors, setFormBuildingFloors] = useState("1");
   const [formBuildingStatus, setFormBuildingStatus] = useState("ACTIVE");
   const [formBuildingDescription, setFormBuildingDescription] = useState("");
+
+  // IP management state
+  const [newIp, setNewIp] = useState("");
+  const [isSavingIps, setIsSavingIps] = useState(false);
 
   // Fetch test center detail
   const { data: centerData, isLoading } = useQuery<{ data: TestCenterDetail }>({
@@ -330,6 +337,126 @@ export default function TestCenterDetailPage() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* IP Restriction */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">จำกัด IP Address</CardTitle>
+          </div>
+          <CardDescription>
+            กำหนด IP หรือ CIDR ที่อนุญาตให้เข้าสอบจากศูนย์สอบนี้ (เปิดใช้งานในแต่ละรอบสอบ)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Current IPs */}
+          {(center.allowedIps && center.allowedIps.length > 0) ? (
+            <div className="flex flex-wrap gap-2">
+              {center.allowedIps.map((ip) => (
+                <Badge
+                  key={ip}
+                  variant="secondary"
+                  className="gap-1.5 pl-2.5 pr-1.5 py-1 font-mono text-xs"
+                >
+                  {ip}
+                  <button
+                    type="button"
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    onClick={async () => {
+                      const updated = center.allowedIps!.filter((i) => i !== ip);
+                      setIsSavingIps(true);
+                      try {
+                        const res = await fetch(`/api/v1/test-centers/${centerId}`, {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ allowedIps: updated }),
+                        });
+                        const json = await res.json();
+                        if (json.success) {
+                          toast.success("ลบ IP สำเร็จ");
+                          queryClient.invalidateQueries({ queryKey: ["test-center-detail", centerId] });
+                        } else {
+                          toast.error(json.error || "เกิดข้อผิดพลาด");
+                        }
+                      } catch { toast.error("เกิดข้อผิดพลาด"); }
+                      finally { setIsSavingIps(false); }
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              ยังไม่มี IP ที่กำหนด — อนุญาตทุก IP (เมื่อไม่ได้เปิด IP check ในรอบสอบ)
+            </p>
+          )}
+
+          {/* Add new IP */}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="เช่น 192.168.1.0/24 หรือ 10.0.0.5"
+              value={newIp}
+              onChange={(e) => setNewIp(e.target.value)}
+              className="max-w-xs font-mono text-sm"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  document.getElementById("btn-add-ip")?.click();
+                }
+              }}
+            />
+            <Button
+              id="btn-add-ip"
+              size="sm"
+              variant="outline"
+              disabled={isSavingIps || !newIp.trim()}
+              onClick={async () => {
+                const ip = newIp.trim();
+                // Basic validation
+                const ipv4Regex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d{1,2})?$/;
+                if (!ipv4Regex.test(ip)) {
+                  toast.error("รูปแบบ IP ไม่ถูกต้อง (เช่น 192.168.1.0/24)");
+                  return;
+                }
+                const currentIps = center.allowedIps ?? [];
+                if (currentIps.includes(ip)) {
+                  toast.error("IP นี้มีอยู่แล้ว");
+                  return;
+                }
+                setIsSavingIps(true);
+                try {
+                  const res = await fetch(`/api/v1/test-centers/${centerId}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ allowedIps: [...currentIps, ip] }),
+                  });
+                  const json = await res.json();
+                  if (json.success) {
+                    toast.success("เพิ่ม IP สำเร็จ");
+                    setNewIp("");
+                    queryClient.invalidateQueries({ queryKey: ["test-center-detail", centerId] });
+                  } else {
+                    toast.error(json.error || "เกิดข้อผิดพลาด");
+                  }
+                } catch { toast.error("เกิดข้อผิดพลาด"); }
+                finally { setIsSavingIps(false); }
+              }}
+              className="gap-1.5"
+            >
+              {isSavingIps ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              เพิ่ม
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            💡 รองรับ IPv4 เดี่ยว (เช่น 10.0.0.5) หรือ CIDR (เช่น 192.168.1.0/24)
+            — เปิดใช้งานโดยเลือก &quot;จำกัด IP ศูนย์สอบ&quot; ในตั้งค่ารอบสอบ
+          </p>
         </CardContent>
       </Card>
 

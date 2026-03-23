@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Building2,
   Palette,
@@ -71,6 +71,8 @@ export default function SettingsPage() {
   const [orgAddress, setOrgAddress] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#741717");
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Populate form when data loads
   useEffect(() => {
@@ -119,10 +121,53 @@ export default function SettingsPage() {
 
       toast.success("บันทึกการตั้งค่าสำเร็จ");
       queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["tenant-theme"] });
     } catch {
       toast.error("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !tenantId) return;
+
+    // Client-side validation
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("รองรับเฉพาะไฟล์ PNG, JPG, WEBP เท่านั้น");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("ขนาดไฟล์ต้องไม่เกิน 2MB");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("logo", file);
+
+      const res = await fetch(`/api/v1/tenants/${tenantId}/logo`, {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        toast.error(json.error?.message ?? "อัปโหลดล้มเหลว");
+        return;
+      }
+
+      toast.success("อัปโหลดโลโก้สำเร็จ");
+      queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
+    } catch {
+      toast.error("ไม่สามารถอัปโหลดได้");
+    } finally {
+      setIsUploading(false);
+      // Reset file input so same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -260,16 +305,29 @@ export default function SettingsPage() {
                 )}
               </div>
               <div className="space-y-1">
-                <Button variant="outline" size="sm" className="gap-1.5" disabled>
-                  <Upload className="h-4 w-4" />
-                  อัปโหลด Logo
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={handleLogoUpload}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={isUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {isUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  {isUploading ? "กำลังอัปโหลด..." : "อัปโหลด Logo"}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  PNG, JPG สูงสุด 2MB (แนะนำ 256x256px)
-                  <br />
-                  <span className="text-muted-foreground/60">
-                    (รอเปิดใช้ File Upload Module)
-                  </span>
+                  PNG, JPG, WEBP สูงสุด 2MB (แนะนำ 256x256px)
                 </p>
               </div>
             </div>
@@ -279,11 +337,21 @@ export default function SettingsPage() {
 
           <div className="space-y-2">
             <Label htmlFor="primary-color">สีหลัก (Primary Color)</Label>
+            <p className="text-xs text-muted-foreground">
+              สีนี้จะถูกใช้เป็นสีหลักของ UI ทั้งระบบ (ปุ่ม, ลิงก์, sidebar, ฯลฯ)
+            </p>
             <div className="flex items-center gap-3">
-              <div
-                className="h-10 w-10 rounded-lg border"
+              <label
+                className="relative h-10 w-10 cursor-pointer rounded-lg border overflow-hidden"
                 style={{ backgroundColor: primaryColor }}
-              />
+              >
+                <input
+                  type="color"
+                  value={primaryColor}
+                  onChange={(e) => setPrimaryColor(e.target.value)}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </label>
               <Input
                 id="primary-color"
                 value={primaryColor}
@@ -291,6 +359,16 @@ export default function SettingsPage() {
                 className="max-w-[150px] font-mono"
                 placeholder="#741717"
               />
+              {primaryColor !== "#741717" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground"
+                  onClick={() => setPrimaryColor("#741717")}
+                >
+                  รีเซ็ตเป็นค่าเริ่มต้น
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>

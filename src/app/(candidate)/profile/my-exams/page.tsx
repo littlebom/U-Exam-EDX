@@ -44,6 +44,7 @@ interface MyExamItem {
   examSessionId: string | null;
   canStartExam: boolean;
   isWithinTimeWindow: boolean;
+  requireFaceVerify: boolean;
 }
 
 interface MyExamsResponse {
@@ -122,15 +123,20 @@ export default function MyExamsPage() {
       return;
     }
 
-    // Check face image
-    if (!hasFaceImage) {
-      toast.error("กรุณาตั้งค่ารูปใบหน้าก่อนเข้าสอบ");
-      router.push("/profile");
+    // Only require face verify if schedule setting is enabled
+    if (item.requireFaceVerify) {
+      if (!hasFaceImage) {
+        toast.error("กรุณาตั้งค่ารูปใบหน้าก่อนเข้าสอบ");
+        router.push("/profile");
+        return;
+      }
+      // Go to face verification
+      router.push(`/verify/${item.scheduleId}`);
       return;
     }
 
-    // Go to face verification
-    router.push(`/verify/${item.scheduleId}`);
+    // No face verify required → go straight to exam
+    router.push(`/take/${item.scheduleId}`);
   };
 
   if (isLoading) {

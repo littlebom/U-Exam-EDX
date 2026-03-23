@@ -38,6 +38,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         registrationDeadline: true,
         maxCandidates: true,
         testCenterId: true,
+        registrationFee: true,
       },
     });
 
@@ -67,17 +68,20 @@ export async function POST(req: NextRequest, context: RouteContext) {
     // Use schedule's testCenterId if pre-assigned, otherwise use candidate's selection
     const testCenterId = schedule.testCenterId ?? data.testCenterId;
 
-    // Create registration (amount=0 for free exams)
+    const fee = schedule.registrationFee ?? 0;
+    const isFree = fee <= 0;
+
+    // Create registration with actual fee from schedule
     const registration = await createRegistration(schedule.tenantId, {
       candidateId: session.user.id,
       examScheduleId: scheduleId,
       testCenterId,
-      amount: 0,
+      amount: fee,
       notes: data.notes,
     });
 
-    // Auto-confirm for free exams (amount=0)
-    if (registration.status !== "WAITING_LIST") {
+    // Auto-confirm only for free exams; paid exams stay PENDING until payment
+    if (isFree && registration.status !== "WAITING_LIST") {
       await updateRegistration(schedule.tenantId, registration.id, {
         status: "CONFIRMED",
         paymentStatus: "WAIVED",
@@ -99,7 +103,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     return NextResponse.json(
-      { success: true, data: { ...registration, seatBooked } },
+      {
+        success: true,
+        data: {
+          ...registration,
+          seatBooked,
+          requiresPayment: !isFree,
+        },
+      },
       { status: 201 }
     );
   } catch (error) {

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { extractPlainText } from "@/lib/content-utils";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -486,7 +487,9 @@ export default function GradeDetailPage() {
                       </TableCell>
                       <TableCell>
                         <p className="text-sm line-clamp-2 max-w-xs">
-                          {question.content}
+                          {typeof question.content === "string"
+                            ? question.content
+                            : extractPlainText(question.content)}
                         </p>
                       </TableCell>
                       <TableCell>
