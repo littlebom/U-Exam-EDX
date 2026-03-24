@@ -14,10 +14,9 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const results = await listExamResults(session.user.id, {
-      page: Number(searchParams.get("page") ?? 1),
-      perPage: Number(searchParams.get("perPage") ?? 20),
-    });
+    const page = Math.max(1, Number(searchParams.get("page") ?? 1) || 1);
+    const perPage = Math.min(100, Math.max(1, Number(searchParams.get("perPage") ?? 20) || 20));
+    const results = await listExamResults(session.user.id, { page, perPage });
 
     return NextResponse.json({ success: true, ...results });
   } catch (error) {

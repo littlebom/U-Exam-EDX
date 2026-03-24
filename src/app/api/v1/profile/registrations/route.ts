@@ -14,10 +14,9 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const registrations = await getRegistrationHistory(session.user.id, {
-      page: Number(searchParams.get("page") ?? 1),
-      perPage: Number(searchParams.get("perPage") ?? 20),
-    });
+    const page = Math.max(1, Number(searchParams.get("page") ?? 1) || 1);
+    const perPage = Math.min(100, Math.max(1, Number(searchParams.get("perPage") ?? 20) || 20));
+    const registrations = await getRegistrationHistory(session.user.id, { page, perPage });
 
     return NextResponse.json({ success: true, ...registrations });
   } catch (error) {

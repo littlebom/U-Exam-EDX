@@ -14,9 +14,11 @@ export async function GET(req: NextRequest) {
     }
 
     const url = new URL(req.url);
+    const rawPage = parseInt(url.searchParams.get("page") ?? "1", 10);
+    const rawPerPage = parseInt(url.searchParams.get("perPage") ?? "20", 10);
     const result = await listNotifications(session.user.id, {
-      page: parseInt(url.searchParams.get("page") ?? "1", 10),
-      perPage: parseInt(url.searchParams.get("perPage") ?? "20", 10),
+      page: Math.max(1, isNaN(rawPage) ? 1 : rawPage),
+      perPage: Math.min(100, Math.max(1, isNaN(rawPerPage) ? 20 : rawPerPage)),
       unreadOnly: url.searchParams.get("unreadOnly") === "true",
     });
 

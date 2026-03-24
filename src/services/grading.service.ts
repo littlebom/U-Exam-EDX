@@ -64,24 +64,25 @@ export async function listGrades(
 ): Promise<{ data: unknown[]; meta: PaginationMeta }> {
   const { examId, status, isPassed, search, page, perPage } = filters;
 
+  // Build session filter — combine examId + search without overwrite
+  const sessionFilter: Prisma.ExamSessionWhereInput = {};
+  if (examId) {
+    sessionFilter.examSchedule = { examId };
+  }
+  if (search) {
+    sessionFilter.candidate = {
+      OR: [
+        { name: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ],
+    };
+  }
+
   const where: Prisma.GradeWhereInput = {
     tenantId,
     ...(status && { status }),
     ...(isPassed !== undefined && { isPassed }),
-    ...(examId && {
-      session: { examSchedule: { examId } },
-    }),
-    ...(search && {
-      session: {
-        candidate: {
-          OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { email: { contains: search, mode: "insensitive" } },
-          ],
-        },
-        ...(examId && { examSchedule: { examId } }),
-      },
-    }),
+    ...(Object.keys(sessionFilter).length > 0 && { session: sessionFilter }),
   };
 
   const [data, total] = await Promise.all([
@@ -667,7 +668,7 @@ export async function updateRubric(
     await tx.rubric.update({
       where: { id: rubricId },
       data: {
-        ...(input.title && { title: input.title }),
+        ...(input.title !== undefined && { title: input.title || undefined }),
         ...(input.description !== undefined && { description: input.description }),
         ...(input.isActive !== undefined && { isActive: input.isActive }),
       },
