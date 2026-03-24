@@ -86,8 +86,7 @@ export async function listSchedules(
         exam: { select: { id: true, title: true, status: true } },
         testCenter: { select: { id: true, name: true, code: true } },
         room: { select: { id: true, name: true, code: true, capacity: true } },
-        // TODO: include _count of registrations when Registration module is implemented
-        // _count: { select: { registrations: true } },
+        _count: { select: { examSessions: true } },
       },
     }),
     prisma.examSchedule.count({ where }),

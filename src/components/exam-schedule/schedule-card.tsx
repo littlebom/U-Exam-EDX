@@ -40,6 +40,7 @@ export interface ScheduleRow {
   exam: { id: string; title: string; status: string };
   testCenter?: { id: string; name: string; code: string } | null;
   room?: { id: string; name: string; code: string; capacity: number | null } | null;
+  _count?: { examSessions: number };
 }
 
 interface ScheduleCardProps {
@@ -87,8 +88,8 @@ export function ScheduleCard({ schedule, onEdit, onCancel, onSetCertificate }: S
   const showMenu = canEdit || canCancel || phaseInfo.phase === "IN_PROGRESS" || phaseInfo.phase === "COMPLETED";
 
   return (
-    <Card className="transition-shadow hover:shadow-md">
-      <CardContent className="p-4">
+    <Card className="transition-shadow hover:shadow-md h-full">
+      <CardContent className="p-4 flex flex-col h-full">
         {/* Header: Phase badge + exam type + menu */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -125,7 +126,7 @@ export function ScheduleCard({ schedule, onEdit, onCancel, onSetCertificate }: S
                       ดูสถานะ
                     </DropdownMenuItem>
                     <DropdownMenuItem className="gap-2" asChild>
-                      <Link href={`/admin/check-in/${schedule.id}`} target="_blank">
+                      <Link href={`/admin/exams/check-in/${schedule.id}`} target="_blank">
                         <ScanFace className="h-4 w-4" />
                         เปิด Check-in มือถือ
                       </Link>
@@ -164,16 +165,16 @@ export function ScheduleCard({ schedule, onEdit, onCancel, onSetCertificate }: S
         </h3>
 
         {/* Info rows */}
-        <div className="space-y-1.5 text-sm text-muted-foreground">
+        <div className="space-y-1.5 text-sm text-muted-foreground flex-1">
           <div className="flex items-center gap-2">
             <Calendar className="h-3.5 w-3.5 shrink-0" />
-            <span className="text-xs">{dateRange}</span>
+            <span className="text-[13px]">{dateRange}</span>
           </div>
 
           {schedule.testCenter && (
             <div className="flex items-center gap-2">
               <Building2 className="h-3.5 w-3.5 shrink-0" />
-              <span className="text-xs truncate">
+              <span className="text-[13px] truncate">
                 {schedule.testCenter.name}
                 {schedule.room ? ` — ${schedule.room.name}` : ""}
               </span>
@@ -183,20 +184,13 @@ export function ScheduleCard({ schedule, onEdit, onCancel, onSetCertificate }: S
           {schedule.location && (
             <div className="flex items-center gap-2">
               <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span className="text-xs truncate">{schedule.location}</span>
-            </div>
-          )}
-
-          {schedule.maxCandidates && (
-            <div className="flex items-center gap-2">
-              <Users className="h-3.5 w-3.5 shrink-0" />
-              <span className="text-xs">{schedule.maxCandidates} คน</span>
+              <span className="text-[13px] truncate">{schedule.location}</span>
             </div>
           )}
 
           <div className="flex items-center gap-2">
             <CreditCard className="h-3.5 w-3.5 shrink-0" />
-            <span className="text-xs font-medium">
+            <span className="text-[13px] font-medium">
               {schedule.registrationFee && schedule.registrationFee > 0
                 ? `฿${schedule.registrationFee.toLocaleString()}`
                 : "ฟรี"}
@@ -206,7 +200,7 @@ export function ScheduleCard({ schedule, onEdit, onCancel, onSetCertificate }: S
           {(schedule.registrationOpenDate || schedule.registrationDeadline) && (
             <div className="flex items-center gap-2">
               <CalendarClock className="h-3.5 w-3.5 shrink-0" />
-              <span className="text-xs">
+              <span className="text-[13px]">
                 {schedule.registrationOpenDate && schedule.registrationDeadline ? (
                   <>
                     รับสมัคร{" "}
@@ -247,10 +241,53 @@ export function ScheduleCard({ schedule, onEdit, onCancel, onSetCertificate }: S
           {countdown && (
             <div className="flex items-center gap-2">
               <Clock className="h-3.5 w-3.5 shrink-0" />
-              <span className="text-xs font-medium">{countdown}</span>
+              <span className="text-[13px] font-medium">{countdown}</span>
             </div>
           )}
+
         </div>
+
+        {/* Quota progress bar — always at bottom */}
+        {(() => {
+          const registered = schedule._count?.examSessions ?? 0;
+          const max = schedule.maxCandidates;
+          const pct = max && max > 0 ? Math.min((registered / max) * 100, 100) : 0;
+          const barColor =
+            pct >= 90
+              ? "bg-red-500"
+              : pct >= 70
+              ? "bg-amber-500"
+              : "bg-emerald-500";
+
+          return (
+            <div className="mt-3 pt-2 border-t space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="text-[13px] text-muted-foreground">
+                    ผู้สมัคร {registered}{max ? `/${max}` : ""} คน
+                  </span>
+                </div>
+                {max && max > 0 && (
+                  <span className={cn(
+                    "text-[10px] font-medium",
+                    pct >= 90 ? "text-red-600" : pct >= 70 ? "text-amber-600" : "text-emerald-600"
+                  )}>
+                    {pct.toFixed(0)}%
+                  </span>
+                )}
+              </div>
+              {max && max > 0 && (
+                <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn("h-full rounded-full transition-all", barColor)}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </CardContent>
     </Card>
   );

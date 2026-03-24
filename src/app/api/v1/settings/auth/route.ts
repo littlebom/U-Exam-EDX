@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { handleApiError } from "@/lib/errors";
+import { clearOAuthCache } from "@/lib/auth";
 import { z } from "zod";
 
 // ─── Schema ─────────────────────────────────────────────────────────
@@ -112,9 +113,12 @@ export async function PUT(req: NextRequest) {
       },
     });
 
+    // Clear OAuth cache so NextAuth picks up new config on next restart
+    clearOAuthCache();
+
     return NextResponse.json({
       success: true,
-      data: { message: "บันทึกการตั้งค่า OAuth สำเร็จ" },
+      data: { message: "บันทึกการตั้งค่า OAuth สำเร็จ (ต้อง restart server เพื่อให้มีผล)" },
     });
   } catch (error) {
     return handleApiError(error);

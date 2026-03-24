@@ -5,6 +5,28 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/auth-utils";
 import { loginSchema } from "@/lib/validations/auth";
 
+// ─── OAuth provider config from DB (cached) ─────────────────────────
+let _oauthCache: Record<string, Record<string, unknown>> | null = null;
+
+export async function getOAuthProviders(): Promise<Record<string, Record<string, unknown>>> {
+  if (_oauthCache) return _oauthCache;
+  try {
+    const tenant = await prisma.tenant.findFirst({
+      select: { settings: true },
+    });
+    const settings = (tenant?.settings ?? {}) as Record<string, unknown>;
+    const authSettings = (settings.auth ?? {}) as Record<string, unknown>;
+    _oauthCache = (authSettings.providers ?? {}) as Record<string, Record<string, unknown>>;
+    return _oauthCache;
+  } catch {
+    return {};
+  }
+}
+
+export function clearOAuthCache() {
+  _oauthCache = null;
+}
+
 export const { auth, handlers, signIn, signOut } = NextAuth({
   pages: {
     signIn: "/login",
@@ -14,10 +36,10 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   providers: [
+    // Google OAuth — .env credentials (DB controls enabled/disabled via signIn callback)
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      // Removed allowDangerousEmailAccountLinking — account linking handled in signIn callback
+      clientId: process.env.GOOGLE_CLIENT_ID || "not-configured",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "not-configured",
     }),
     Credentials({
       credentials: {
@@ -76,23 +98,38 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async signIn({ user, account }) {
-      // Google OAuth: find or link user
-      if (account?.provider === "google" && user.email) {
+      // OAuth providers: find or link user
+      const oauthProviders = ["google", "microsoft-entra-id", "facebook", "line", "keycloak"];
+      if (account?.provider && oauthProviders.includes(account.provider) && user.email) {
+        // Check if provider is enabled in DB
+        const providers = await getOAuthProviders();
+        const providerKey = account.provider === "microsoft-entra-id" ? "microsoft" : account.provider;
+        const providerConfig = providers[providerKey];
+        if (!providerConfig?.enabled) {
+          return "/login?error=ProviderDisabled";
+        }
+
         const existingUser = await prisma.user.findUnique({
           where: { email: user.email.toLowerCase() },
         });
 
         if (existingUser) {
-          // Link Google to existing user if not already linked
+          // Link OAuth to existing user if currently credentials-only
           if (existingUser.provider === "credentials") {
             await prisma.user.update({
               where: { id: existingUser.id },
               data: {
-                provider: "google",
+                provider: providerKey,
                 providerId: account.providerAccountId,
                 imageUrl: user.image ?? existingUser.imageUrl,
                 lastLoginAt: new Date(),
               },
+            });
+          } else {
+            // Update last login
+            await prisma.user.update({
+              where: { id: existingUser.id },
+              data: { lastLoginAt: new Date() },
             });
           }
           // Use the existing user ID for JWT
@@ -100,8 +137,39 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           return true;
         }
 
-        // New Google user without registration — block
-        return "/login?error=NoAccount";
+        // Auto-register new OAuth user as CANDIDATE
+        // Find default tenant + CANDIDATE role
+        const defaultTenant = await prisma.tenant.findFirst();
+        const candidateRole = await prisma.role.findFirst({
+          where: { name: "CANDIDATE" },
+        });
+
+        if (!defaultTenant || !candidateRole) {
+          return "/login?error=SetupIncomplete";
+        }
+
+        const newUser = await prisma.user.create({
+          data: {
+            email: user.email.toLowerCase(),
+            name: user.name ?? user.email.split("@")[0],
+            imageUrl: user.image ?? undefined,
+            provider: providerKey,
+            providerId: account.providerAccountId,
+            isActive: true,
+            lastLoginAt: new Date(),
+            userTenants: {
+              create: {
+                tenantId: defaultTenant.id,
+                roleId: candidateRole.id,
+                isDefault: true,
+                isActive: true,
+              },
+            },
+          },
+        });
+
+        user.id = newUser.id;
+        return true;
       }
 
       return true;
