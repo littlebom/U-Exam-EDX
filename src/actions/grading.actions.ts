@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionTenant } from "@/lib/get-session";
+import { requirePermission } from "@/lib/rbac";
 import {
   gradeAnswerSchema,
   batchGradeSchema,
@@ -28,7 +28,7 @@ export async function autoGradeAction(
   sessionId: string
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("grade:manage");
     const result = await autoGradeSession(session.tenantId, sessionId);
     return { success: true, data: result };
   } catch (error) {
@@ -46,7 +46,7 @@ export async function gradeAnswerAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("grade:manage");
     const parsed = gradeAnswerSchema.parse(input);
     const result = await gradeAnswer(session.tenantId, gradeId, session.userId, parsed);
     return { success: true, data: result };
@@ -65,7 +65,7 @@ export async function batchGradeAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("grade:manage");
     const parsed = batchGradeSchema.parse(input);
     const result = await batchGrade(session.tenantId, gradeId, session.userId, parsed);
     return { success: true, data: result };
@@ -84,7 +84,7 @@ export async function adjustScoreAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("grade:manage");
     const parsed = adjustScoreSchema.parse(input);
     const result = await adjustScore(session.tenantId, gradeId, session.userId, parsed);
     return { success: true, data: result };
@@ -102,7 +102,7 @@ export async function publishGradeAction(
   gradeId: string
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("grade:manage");
     const result = await publishGrade(session.tenantId, gradeId);
     return { success: true, data: result };
   } catch (error) {
@@ -119,7 +119,7 @@ export async function bulkPublishGradesAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("grade:manage");
     const parsed = bulkPublishSchema.parse(input);
     const result = await bulkPublishGrades(session.tenantId, parsed.gradeIds);
     return { success: true, data: result };
@@ -137,7 +137,7 @@ export async function createRubricAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("grade:manage");
     const parsed = createRubricSchema.parse(input);
     const result = await createRubric(session.tenantId, parsed);
     return { success: true, data: result };
@@ -156,7 +156,7 @@ export async function updateRubricAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("grade:manage");
     const parsed = updateRubricSchema.parse(input);
     const result = await updateRubric(session.tenantId, rubricId, parsed);
     return { success: true, data: result };
@@ -174,7 +174,7 @@ export async function deleteRubricAction(
   rubricId: string
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("grade:manage");
     await deleteRubric(session.tenantId, rubricId);
     return { success: true, data: null };
   } catch (error) {

@@ -40,6 +40,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useList, useDetail, useSimpleList } from "@/hooks/use-api";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import Link from "next/link";
 import type { QuestionType, DifficultyLevel, QuestionStatus } from "@/types/question-bank";
 import {
@@ -63,6 +65,12 @@ interface QuestionRow {
   questionGroup: { id: string; name: string; color: string | null } | null;
   createdBy: { id: string; name: string; email: string };
   questionTags: { tag: { id: string; name: string; color: string | null } }[];
+}
+
+interface CompetencyAreaOption {
+  id: string;
+  name: string;
+  color: string | null;
 }
 
 interface QuestionGroupFilterItem {
@@ -114,6 +122,38 @@ export default function SubjectDetailPage() {
     `question-groups-${subjectId}`,
     `/api/v1/subjects/${subjectId}/question-groups`
   );
+
+  // ── Competency areas (from all frameworks) ──
+  const { data: competencyFrameworks } = useSimpleList<{
+    id: string;
+    name: string;
+    areas: CompetencyAreaOption[];
+  }>("competency-frameworks", "/api/v1/competency-frameworks");
+
+  const allCompetencyAreas: CompetencyAreaOption[] = useMemo(() => {
+    if (!competencyFrameworks) return [];
+    return competencyFrameworks.flatMap((fw) => fw.areas ?? []);
+  }, [competencyFrameworks]);
+
+  const queryClient = useQueryClient();
+
+  const handleCompetencyMap = async (questionId: string, competencyAreaId: string | null) => {
+    try {
+      const res = await fetch("/api/v1/questions/competency-map", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId, competencyAreaId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        queryClient.invalidateQueries({ queryKey: [`questions-subject-${subjectId}`] });
+      } else {
+        toast.error(json.error?.message || "เกิดข้อผิดพลาด");
+      }
+    } catch {
+      toast.error("เกิดข้อผิดพลาด");
+    }
+  };
 
   // ── Questions list (filtered by subjectId) ──
   const filterParams = useMemo(() => {
@@ -463,7 +503,7 @@ export default function SubjectDetailPage() {
                         asChild
                       >
                         <Link
-                          href={`/question-bank/subjects/${subjectId}/${q.id}/edit`}
+                          href={`/admin/question-bank/subjects/${subjectId}/${q.id}/edit`}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Link>
@@ -476,6 +516,7 @@ export default function SubjectDetailPage() {
           )}
         </CardContent>
       </Card>
+
     </div>
   );
 }

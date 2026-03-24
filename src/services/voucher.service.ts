@@ -182,9 +182,9 @@ export async function createVoucher(tenantId: string, data: CreateVoucher) {
 /**
  * Validate a voucher by code (for check-in).
  */
-export async function validateVoucher(code: string) {
-  const voucher = await prisma.voucher.findUnique({
-    where: { code },
+export async function validateVoucher(code: string, tenantId?: string) {
+  const voucher = await prisma.voucher.findFirst({
+    where: { code, ...(tenantId && { tenantId }) },
     include: {
       candidate: { select: { id: true, name: true, email: true } },
       registration: {

@@ -12,7 +12,7 @@ export async function checkInByVoucher(
 ) {
   // Find the voucher
   const voucher = await prisma.voucher.findFirst({
-    where: { code: voucherCode },
+    where: { code: voucherCode, tenantId },
     include: {
       candidate: { select: { id: true, name: true, email: true } },
       registration: {
@@ -65,16 +65,27 @@ export async function checkInByVoucher(
     throw errors.validation("การสมัครสอบยังไม่ได้รับการยืนยัน");
   }
 
-  // Mark voucher as used (check-in)
+  // Atomic mark voucher as used — prevents race condition
   const now = new Date();
-  await prisma.voucher.update({
-    where: { id: voucher.id },
+  const updated = await prisma.voucher.updateMany({
+    where: { id: voucher.id, isUsed: false },
     data: {
       status: "USED",
       isUsed: true,
       usedAt: now,
     },
   });
+
+  if (updated.count === 0) {
+    // Another request already marked it
+    return {
+      status: "ALREADY_CHECKED_IN",
+      message: "ผู้สอบคนนี้เช็คอินแล้ว (concurrent)",
+      candidate: voucher.candidate,
+      seatNumber: voucher.registration.seatNumber,
+      usedAt: voucher.usedAt,
+    };
+  }
 
   // Determine if late
   const startDate = new Date(voucher.registration.examSchedule.startDate);
@@ -154,7 +165,7 @@ export async function getCheckInStatus(
   if (!schedule) throw errors.notFound("ไม่พบรอบสอบ");
 
   // Count registrations vs unique checked-in candidates (from ExamDayLog metadata.candidateId)
-  const [totalRegistered, checkinLogs, lateLogs] = await Promise.all([
+  const [totalRegistered, checkinLogs, lateCheckinLogs] = await Promise.all([
     prisma.registration.count({
       where: { examScheduleId, tenantId, status: "CONFIRMED" },
     }),
@@ -164,10 +175,11 @@ export async function getCheckInStatus(
         tenantId,
         type: { in: ["CHECKIN", "LATE_CHECKIN"] },
       },
-      select: { metadata: true },
+      select: { metadata: true, type: true },
     }),
-    prisma.examDayLog.count({
+    prisma.examDayLog.findMany({
       where: { examScheduleId, tenantId, type: "LATE_CHECKIN" },
+      select: { metadata: true },
     }),
   ]);
 
@@ -178,7 +190,14 @@ export async function getCheckInStatus(
       .filter(Boolean)
   );
   const checkedInCount = uniqueCandidates.size;
-  const lateCount = lateLogs;
+
+  // Deduplicate late count too
+  const uniqueLateCandidates = new Set(
+    lateCheckinLogs
+      .map((l) => (l.metadata as Record<string, unknown>)?.candidateId)
+      .filter(Boolean)
+  );
+  const lateCount = uniqueLateCandidates.size;
 
   // Get incidents
   const incidentCount = await prisma.examDayLog.count({

@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { handleApiError } from "@/lib/errors";
 import { clearOAuthCache } from "@/lib/auth";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import { z } from "zod";
 
 // ─── Schema ─────────────────────────────────────────────────────────
@@ -91,11 +92,11 @@ export async function PUT(req: NextRequest) {
       const current = currentProviders[key] ?? {};
       mergedProviders[key] = {
         ...config,
-        // Keep existing secret if client sent masked value
+        // Keep existing secret if client sent masked value, encrypt new ones
         clientSecret:
           config.clientSecret === "••••••••" || !config.clientSecret
             ? current.clientSecret ?? ""
-            : config.clientSecret,
+            : encryptSecret(config.clientSecret),
       };
     }
 

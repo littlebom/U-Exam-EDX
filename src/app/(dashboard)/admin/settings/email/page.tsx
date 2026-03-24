@@ -81,9 +81,11 @@ export default function EmailSettingsPage() {
     }
     setIsTesting(true);
     try {
-      const res = await fetch(
-        `/api/v1/settings/email/test?email=${encodeURIComponent(testEmail)}`
-      );
+      const res = await fetch("/api/v1/settings/email/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: testEmail }),
+      });
       const json = await res.json();
       if (json.success) {
         toast.success(json.data?.message || "ส่งอีเมลทดสอบสำเร็จ");

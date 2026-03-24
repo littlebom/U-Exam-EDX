@@ -51,7 +51,22 @@ export async function middleware(req: NextRequest) {
         );
       }
     }
-    // Let API requests pass through (no redirect logic)
+    // Check auth for protected API routes (defense-in-depth)
+    const isPublicApi = pathname.startsWith("/api/auth/") ||
+      pathname.startsWith("/api/webhooks/") ||
+      pathname.startsWith("/api/v1/external/") ||
+      pathname.startsWith("/api/v1/public/");
+
+    if (!isPublicApi && pathname.startsWith("/api/v1/")) {
+      const token = await getToken({ req });
+      if (!token) {
+        return NextResponse.json(
+          { success: false, error: { code: "UNAUTHORIZED", message: "กรุณาเข้าสู่ระบบ" } },
+          { status: 401 }
+        );
+      }
+    }
+
     return NextResponse.next();
   }
 

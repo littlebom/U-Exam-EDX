@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { handleApiError, errors } from "@/lib/errors";
+import { decryptSecret } from "@/lib/crypto";
 import nodemailer from "nodemailer";
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
     const session = await requirePermission("tenant:settings");
-    const email = req.nextUrl.searchParams.get("email");
+    const body = await req.json();
+    const email = body.email as string | undefined;
 
     if (!email || !email.includes("@")) {
       throw errors.validation("กรุณาระบุอีเมลที่ถูกต้อง");
@@ -31,7 +33,7 @@ export async function GET(req: NextRequest) {
       secure: false,
       auth: {
         user: smtp.user as string,
-        pass: smtp.password as string,
+        pass: decryptSecret(smtp.password as string),
       },
     });
 

@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, Loader2, BookOpen, FileText, Tag } from "lucide-react";
+import { ArrowLeft, ChevronRight, Loader2, BookOpen, FileText, Tag, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tabs,
@@ -16,6 +16,7 @@ import type { SubjectDetail, CategoryItem, QuestionGroupItem, TagItem } from "@/
 import { SubjectInfoSection } from "./_components/subject-info-section";
 import { QuestionGroupsSection } from "./_components/question-groups-section";
 import { TagsSection } from "./_components/tags-section";
+import { SubjectCompetencySettings } from "@/components/competency/subject-competency-settings";
 export default function SubjectSettingsPage() {
   const params = useParams();
   const subjectId = params.id as string;
@@ -114,6 +115,10 @@ export default function SubjectSettingsPage() {
             <Tag className="h-4 w-4" />
             แท็ก
           </TabsTrigger>
+          <TabsTrigger value="competency" className="gap-1.5">
+            <Target className="h-4 w-4" />
+            สมรรถนะ
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="info" className="pt-6">
@@ -134,6 +139,10 @@ export default function SubjectSettingsPage() {
 
         <TabsContent value="tags" className="pt-6">
           <TagsSection tags={tags} isLoading={tagsLoading} />
+        </TabsContent>
+
+        <TabsContent value="competency" className="pt-6">
+          <SubjectCompetencySettings subjectId={subjectId} />
         </TabsContent>
       </Tabs>
     </div>

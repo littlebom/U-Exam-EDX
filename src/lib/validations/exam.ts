@@ -44,6 +44,7 @@ export const updateExamSchema = z.object({
   passingScore: z.number().min(0).max(100).optional(),
   duration: z.number().int().min(1).max(1440).optional(),
   settings: z.record(z.string(), z.unknown()).nullable().optional(),
+  competencyFrameworkId: z.string().uuid().nullable().optional(),
 });
 export type UpdateExamInput = z.infer<typeof updateExamSchema>;
 

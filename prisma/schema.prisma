@@ -1,4 +1,4 @@
-// U-Exam — Prisma Schema (Phase 1-22 + Subject)
+// U-Exam — Prisma Schema (Phase 1-22 + Subject + Competency)
 // Phase 1: Tenant, User, UserTenant, Role, Permission, RolePermission,
 //          Notification, NotificationTemplate, NotificationPreference
 // Phase 2: Category, Tag, Subject, Question, QuestionTag, QuestionMedia, QuestionHistory
@@ -15,6 +15,7 @@
 // Phase 20: CertificateTemplate, Certificate, DigitalBadge
 // Phase 21: ProctoringSession, ProctoringEvent, Incident
 // Phase 22: ApiKey, Webhook, WebhookLog
+// Competency: CompetencyFramework, CompetencyArea, QuestionCompetencyMap
 
 generator client {
   provider = "prisma-client-js"
@@ -73,6 +74,7 @@ model Tenant {
   webhooks                Webhook[]
   mediaFiles              MediaFile[]
   auditLogs               AuditLog[]
+  competencyFrameworks     CompetencyFramework[]
 
   @@map("tenants")
 }
@@ -340,9 +342,10 @@ model Subject {
   // Relations
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  questions      Question[]
-  questionGroups QuestionGroup[]
-  examBlueprints ExamBlueprint[]
+  questions            Question[]
+  questionGroups       QuestionGroup[]
+  examBlueprints       ExamBlueprint[]
+  competencyMaps       SubjectCompetencyMap[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -535,6 +538,7 @@ model Exam {
   duration     Int     @default(60) // minutes
   appealDeadlineDays Int? @map("appeal_deadline_days") // null = no deadline
   settings     Json?   @db.JsonB // shuffle, showResult, attempts, etc.
+  competencyFrameworkId String? @map("competency_framework_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
@@ -542,6 +546,7 @@ model Exam {
   // Relations
   tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy  User           @relation("ExamCreatedBy", fields: [createdById], references: [id])
+  competencyFramework CompetencyFramework? @relation(fields: [competencyFrameworkId], references: [id], onDelete: SetNull)
   sections   ExamSection[]
   blueprints ExamBlueprint[]
   schedules  ExamSchedule[]
@@ -1835,3 +1840,71 @@ model WebhookLog {
   @@index([event])
   @@map("webhook_logs")
 }
+
+// ============================================================
+// Competency Framework
+// ============================================================
+
+model CompetencyFramework {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  tenant Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  areas  CompetencyArea[]
+  exams  Exam[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("competency_frameworks")
+}
+
+model CompetencyArea {
+  id          String  @id @default(uuid()) @db.Uuid
+  frameworkId String  @map("framework_id") @db.Uuid
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+  icon        String? @db.VarChar(50)
+  color       String? @db.VarChar(20)
+  order       Int     @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  framework    CompetencyFramework    @relation(fields: [frameworkId], references: [id], onDelete: Cascade)
+  subjectMaps  SubjectCompetencyMap[]
+
+  @@index([frameworkId])
+  @@index([frameworkId, order])
+  @@map("competency_areas")
+}
+
+// ============================================================
+// SubjectCompetencyMap — ผูก Competency กับวิชา + น้ำหนัก (weight)
+// ============================================================
+model SubjectCompetencyMap {
+  id               String @id @default(uuid()) @db.Uuid
+  subjectId        String @map("subject_id") @db.Uuid
+  competencyAreaId String @map("competency_area_id") @db.Uuid
+  weight           Float  @default(1.0) // 0.0-1.0 เช่น 0.7 = 70%
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  subject        Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  competencyArea CompetencyArea @relation(fields: [competencyAreaId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, competencyAreaId])
+  @@index([subjectId])
+  @@index([competencyAreaId])
+  @@map("subject_competency_maps")
+}
+

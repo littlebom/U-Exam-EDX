@@ -49,9 +49,9 @@ export async function GET(_req: NextRequest, context: RouteContext) {
         candidateId: r.candidate.id,
         registrationId: r.id,
         name: r.candidate.name,
-        email: r.candidate.email,
-        imageUrl: r.candidate.imageUrl,
         seatNumber: r.seatNumber,
+        // Send descriptor for face matching (required for client-side comparison)
+        // Stripped email/imageUrl to minimize PII exposure
         descriptor: r.candidate.candidateProfile!.faceDescriptor as number[],
       }));
 

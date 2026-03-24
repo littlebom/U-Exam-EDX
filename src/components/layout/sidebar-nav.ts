@@ -160,6 +160,7 @@ export const sidebarNav: NavItem[] = [
       { title: "ชำระเงิน", href: "/admin/settings/payment" },
       { title: "อีเมล (SMTP)", href: "/admin/settings/email" },
       { title: "Authentication (OAuth)", href: "/admin/settings/auth" },
+      { title: "กรอบสมรรถนะ", href: "/admin/settings/competency" },
     ],
   },
 ];

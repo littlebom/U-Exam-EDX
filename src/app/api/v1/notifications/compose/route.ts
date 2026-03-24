@@ -117,21 +117,26 @@ export async function POST(req: NextRequest) {
       type: "SYSTEM_ANNOUNCEMENT",
     });
 
+    // Send emails in parallel batches of 10 to avoid timeout
+    const BATCH_SIZE = 10;
     let sentCount = 0;
     let failCount = 0;
 
-    for (const email of emails) {
-      try {
-        await sendEmail({
-          to: email,
-          subject: `[U-Exam] ${subject}`,
-          html,
-          tenantId: session.tenantId,
-        });
-        sentCount++;
-      } catch (err) {
-        failCount++;
-        console.error("[compose-email] Failed:", email, err);
+    for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+      const batch = emails.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map((email) =>
+          sendEmail({
+            to: email,
+            subject: `[U-Exam] ${subject}`,
+            html,
+            tenantId: session.tenantId,
+          })
+        )
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled") sentCount++;
+        else failCount++;
       }
     }
 

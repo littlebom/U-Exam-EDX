@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { CompetencyRadarChart } from "@/components/competency/competency-radar-chart";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
@@ -132,6 +133,18 @@ interface ProfileData {
       examSchedule: {
         exam: { id: string; title: string };
         startDate: string;
+      };
+    };
+  }>;
+  certificates?: Array<{
+    id: string;
+    certificateNumber: string;
+    issuedAt: string;
+    grade?: {
+      session?: {
+        examSchedule?: {
+          exam?: { title?: string };
+        };
       };
     };
   }>;
@@ -379,7 +392,7 @@ export default function ProfileDashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Stats Cards */}
+      {/* Stats Cards — 4 columns */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statsCards.map((card) => (
           <Card key={card.title}>
@@ -403,54 +416,63 @@ export default function ProfileDashboardPage() {
         ))}
       </div>
 
-      {/* Recent Results + Progress Chart */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* Recent Results Table */}
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle className="text-base">ผลสอบล่าสุด</CardTitle>
-            <CardDescription>ผลสอบ 5 ครั้งล่าสุดของคุณ</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {profile.recentResults.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                ยังไม่มีผลสอบ
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ชุดสอบ</TableHead>
-                    <TableHead className="text-center">คะแนน</TableHead>
-                    <TableHead className="text-center">สถานะ</TableHead>
-                    <TableHead className="text-right">วันสอบ</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {profile.recentResults.map((result) => (
-                    <TableRow key={result.id}>
-                      <TableCell className="max-w-[200px] truncate font-medium">
-                        {result.session.examSchedule.exam.title}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {result.percentage ?? 0}%
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {getStatusBadge(result.isPassed)}
-                      </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">
-                        {formatDate(result.session.examSchedule.startDate)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+      {/* Competency + Progress Chart */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left: Spider Graph */}
+        <div>
+          <CompetencyRadarChart />
+        </div>
 
-        {/* Progress Chart */}
-        <Card className="lg:col-span-2">
+        {/* Right: Certificates + Progress Chart */}
+        <div className="space-y-6">
+          {/* Recent Certificates */}
+          {profile.certificates && profile.certificates.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Award className="h-4 w-4 text-amber-500" />
+                    ใบรับรองล่าสุด
+                  </CardTitle>
+                  <Link href="/profile/certificates">
+                    <Button variant="ghost" size="sm" className="text-xs">
+                      ดูทั้งหมด →
+                    </Button>
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-2">
+                  {profile.certificates.slice(0, 3).map((cert) => (
+                    <div
+                      key={cert.id}
+                      className="flex items-center gap-3 rounded-lg border p-2.5"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                        <Award className="h-4 w-4 text-amber-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {cert.grade?.session?.examSchedule?.exam?.title ?? cert.certificateNumber}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(cert.issuedAt).toLocaleDateString("th-TH", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </p>
+                      </div>
+                      <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Progress Chart */}
+          <Card>
           <CardHeader>
             <CardTitle className="text-base">พัฒนาการคะแนน</CardTitle>
             <CardDescription>
@@ -507,7 +529,53 @@ export default function ProfileDashboardPage() {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
+
+      {/* Recent Results Table — full width */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">ผลสอบล่าสุด</CardTitle>
+          <CardDescription>ผลสอบ 5 ครั้งล่าสุดของคุณ</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {profile.recentResults.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              ยังไม่มีผลสอบ
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ชุดสอบ</TableHead>
+                  <TableHead className="text-center">คะแนน</TableHead>
+                  <TableHead className="text-center">สถานะ</TableHead>
+                  <TableHead className="text-right">วันสอบ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {profile.recentResults.map((result) => (
+                  <TableRow key={result.id}>
+                    <TableCell className="max-w-[200px] truncate font-medium">
+                      {result.session.examSchedule.exam.title}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {result.percentage ?? 0}%
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {getStatusBadge(result.isPassed)}
+                    </TableCell>
+                    <TableCell className="text-right text-sm text-muted-foreground">
+                      {formatDate(result.session.examSchedule.startDate)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
     </div>
   );
 }

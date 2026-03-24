@@ -231,6 +231,11 @@ export async function updateExam(
   if (data.passingScore !== undefined) updatePayload.passingScore = data.passingScore;
   if (data.duration !== undefined) updatePayload.duration = data.duration;
   if (data.settings !== undefined) updatePayload.settings = data.settings as Prisma.InputJsonValue;
+  if (data.competencyFrameworkId !== undefined) {
+    updatePayload.competencyFramework = data.competencyFrameworkId
+      ? { connect: { id: data.competencyFrameworkId } }
+      : { disconnect: true };
+  }
 
   await prisma.exam.update({
     where: { id: examId },

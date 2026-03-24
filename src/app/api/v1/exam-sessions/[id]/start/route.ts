@@ -1,6 +1,6 @@
 // Admin/internal route — candidates should use /api/v1/profile/exam-sessions/[id]/start
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionTenant } from "@/lib/get-session";
+import { requirePermission } from "@/lib/rbac";
 import { startExam } from "@/services/exam-session.service";
 import { startSessionSchema } from "@/lib/validations/exam-session";
 import { handleApiError } from "@/lib/errors";
@@ -12,7 +12,7 @@ export async function POST(
   context: RouteContext
 ) {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("exam:manage");
     const { id } = await context.params;
 
     const result = await startExam(session.userId, {

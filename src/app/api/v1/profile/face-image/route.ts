@@ -53,6 +53,11 @@ export async function POST(request: NextRequest) {
     const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
     const imageBuffer = Buffer.from(base64Data, "base64");
 
+    // Validate file size (max 5MB)
+    if (imageBuffer.length > 5 * 1024 * 1024) {
+      throw new AppError("VALIDATION_ERROR", "ไฟล์รูปภาพต้องมีขนาดไม่เกิน 5MB", 400);
+    }
+
     // Process with sharp: resize, convert to WebP
     const processed = await sharp(imageBuffer)
       .resize(400, 400, { fit: "cover", position: "centre" })
@@ -75,7 +80,6 @@ export async function POST(request: NextRequest) {
 
     // Save face descriptor to CandidateProfile if provided
     const hasDescriptor = descriptor && Array.isArray(descriptor) && descriptor.length === 128;
-    console.log("[face-image] descriptor received:", hasDescriptor, "length:", descriptor?.length);
     if (hasDescriptor) {
       try {
         await prisma.candidateProfile.upsert({
@@ -86,9 +90,8 @@ export async function POST(request: NextRequest) {
             faceDescriptor: descriptor,
           },
         });
-        console.log("[face-image] Descriptor saved to DB successfully");
       } catch (dbErr) {
-        console.error("[face-image] Failed to save descriptor:", dbErr);
+        // Non-critical — face image saved but descriptor failed
       }
     }
 

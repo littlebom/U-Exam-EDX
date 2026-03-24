@@ -91,7 +91,6 @@ export function QuestionForm({ type, data, onChange, subjectId }: QuestionFormPr
     `question-groups-${subjectId}`,
     subjectId ? `/api/v1/subjects/${subjectId}/question-groups` : ""
   );
-
   const typeOption = TYPE_OPTIONS.find((t) => t.type === type);
 
   const update = <K extends keyof QuestionFormData>(
@@ -345,6 +344,7 @@ export function QuestionForm({ type, data, onChange, subjectId }: QuestionFormPr
               </>
             )}
 
+            {/* Competency Areas (สมรรถนะ — multi-select) */}
             <Separator />
 
             {/* Tags */}

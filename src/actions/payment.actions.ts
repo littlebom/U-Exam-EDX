@@ -1,6 +1,6 @@
 "use server";
 
-import { getSessionTenant } from "@/lib/get-session";
+import { requirePermission } from "@/lib/rbac";
 import type { ActionResult } from "@/types";
 import {
   createPaymentSchema,
@@ -29,7 +29,7 @@ export async function createPaymentAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("payment:manage");
     const data = createPaymentSchema.parse(input);
     const payment = await createPayment(session.tenantId, data);
     return { success: true, data: payment };
@@ -46,7 +46,7 @@ export async function processPaymentAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("payment:manage");
     const data = processPaymentSchema.parse(input);
     const payment = await processPayment(session.tenantId, id, data);
     return { success: true, data: payment };
@@ -64,7 +64,7 @@ export async function createRefundAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("payment:manage");
     const data = createRefundSchema.parse(input);
     const refund = await createRefund(session.tenantId, data);
     return { success: true, data: refund };
@@ -81,7 +81,7 @@ export async function processRefundAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("payment:manage");
     const { status } = processRefundSchema.parse(input);
     const refund = await processRefund(
       session.tenantId,
@@ -104,7 +104,7 @@ export async function createCouponAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("payment:manage");
     const data = createCouponSchema.parse(input);
     const coupon = await createCoupon(session.tenantId, data);
     return { success: true, data: coupon };
@@ -121,7 +121,7 @@ export async function updateCouponAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("payment:manage");
     const data = updateCouponSchema.parse(input);
     const coupon = await updateCoupon(session.tenantId, id, data);
     return { success: true, data: coupon };
@@ -137,7 +137,7 @@ export async function deleteCouponAction(
   id: string
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("payment:manage");
     await deleteCoupon(session.tenantId, id);
     return { success: true, data: null };
   } catch (error) {
@@ -152,7 +152,7 @@ export async function applyCouponAction(
   input: unknown
 ): Promise<ActionResult<unknown>> {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("payment:manage");
     const data = applyCouponSchema.parse(input);
     const result = await applyCoupon(session.tenantId, data);
     return { success: true, data: result };

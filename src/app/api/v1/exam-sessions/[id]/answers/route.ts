@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionTenant } from "@/lib/get-session";
+import { requirePermission } from "@/lib/rbac";
 import {
   submitAnswer,
   flagQuestion,
@@ -21,7 +21,7 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("exam:manage");
     const { id } = await context.params;
     const answers = await getSessionAnswers(id, session.userId);
 
@@ -37,7 +37,7 @@ export async function PUT(
   context: RouteContext
 ) {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("exam:manage");
     const { id } = await context.params;
     const body = await request.json();
 
@@ -62,7 +62,7 @@ export async function POST(
   context: RouteContext
 ) {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("exam:manage");
     const { id } = await context.params;
     const body = await request.json();
     const parsed = autoSaveSchema.parse(body);

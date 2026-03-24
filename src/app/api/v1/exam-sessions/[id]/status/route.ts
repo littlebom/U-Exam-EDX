@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionTenant } from "@/lib/get-session";
+import { requirePermission } from "@/lib/rbac";
 import { getSessionStatus } from "@/services/exam-session.service";
 import { handleApiError } from "@/lib/errors";
 
@@ -10,7 +10,7 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("session:list");
     const { id } = await context.params;
     const result = await getSessionStatus(id, session.userId);
 

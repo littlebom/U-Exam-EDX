@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
+import { decryptSecret } from "@/lib/crypto";
 
 export interface EmailOptions {
   to: string;
@@ -30,7 +31,7 @@ async function getSmtpConfig(tenantId?: string) {
           host: smtp.host as string,
           port: (smtp.port as number) ?? 587,
           user: smtp.user as string,
-          pass: smtp.password as string,
+          pass: decryptSecret(smtp.password as string),
           from: (smtp.from as string) || `U-Exam <${smtp.user}>`,
         };
       }

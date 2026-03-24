@@ -37,47 +37,49 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const encoder = new TextEncoder();
     let closed = false;
     const channelName = `candidate:${examSessionId}`;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+    const onEvent = (event: SSEEvent) => {
+      if (closed) return;
+      try {
+        streamController?.enqueue(
+          encoder.encode(`event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`)
+        );
+      } catch {
+        // Stream closed
+      }
+    };
+
+    const cleanup = () => {
+      closed = true;
+      if (heartbeat) clearInterval(heartbeat);
+      sseEmitter.off(channelName, onEvent);
+    };
+
+    let streamController: ReadableStreamDefaultController | null = null;
 
     const stream = new ReadableStream({
       start(controller) {
+        streamController = controller;
         controller.enqueue(
           encoder.encode(`event: connected\ndata: ${JSON.stringify({ examSessionId })}\n\n`)
         );
 
-        // Heartbeat
-        const heartbeat = setInterval(() => {
+        heartbeat = setInterval(() => {
           if (closed) return;
           try {
             controller.enqueue(
               encoder.encode(`event: heartbeat\ndata: ${JSON.stringify({ time: new Date().toISOString() })}\n\n`)
             );
           } catch {
-            clearInterval(heartbeat);
+            cleanup();
           }
         }, 30_000);
 
-        // Listen for events targeted at this candidate
-        const onEvent = (event: SSEEvent) => {
-          if (closed) return;
-          try {
-            controller.enqueue(
-              encoder.encode(`event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`)
-            );
-          } catch {
-            // Stream closed
-          }
-        };
-
         sseEmitter.on(channelName, onEvent);
-
-        (controller as unknown as Record<string, () => void>).__cleanup = () => {
-          closed = true;
-          clearInterval(heartbeat);
-          sseEmitter.off(channelName, onEvent);
-        };
       },
       cancel() {
-        closed = true;
+        cleanup();
       },
     });
 

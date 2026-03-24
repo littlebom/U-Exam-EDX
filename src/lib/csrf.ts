@@ -63,8 +63,7 @@ export function validateCsrf(req: NextRequest): boolean {
     }
   }
 
-  // No Origin or Referer header — could be a server-to-server call
-  // Allow requests with valid session (they're likely from the app)
-  // But for maximum security, reject requests without either header
+  // No Origin or Referer header — reject for safety
+  // Server-to-server calls should use API key auth (exempt routes)
   return false;
 }

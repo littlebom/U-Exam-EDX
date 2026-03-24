@@ -32,7 +32,7 @@ export async function POST(
   context: RouteContext
 ) {
   try {
-    const session = await getSessionTenant();
+    const session = await requirePermission("session:manage");
     const { id } = await context.params;
     const body = await request.json();
 

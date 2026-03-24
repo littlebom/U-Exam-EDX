@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
 import { handleApiError } from "@/lib/errors";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import { z } from "zod";
 
 // ─── GET — Load SMTP config (mask password) ─────────────────────────
@@ -59,17 +60,17 @@ export async function PATCH(req: NextRequest) {
     const currentSettings = (tenant?.settings ?? {}) as Record<string, unknown>;
     const existingSmtp = (currentSettings.smtp ?? {}) as Record<string, unknown>;
 
-    // Keep existing password if not provided (masked)
-    const password =
+    // Keep existing password if not provided (masked), encrypt before storing
+    const rawPassword =
       data.password && data.password !== "••••••••"
         ? data.password
-        : (existingSmtp.password as string) ?? "";
+        : decryptSecret((existingSmtp.password as string) ?? "");
 
     currentSettings.smtp = {
       host: data.host,
       port: data.port,
       user: data.user,
-      password,
+      password: rawPassword ? encryptSecret(rawPassword) : "",
       from: data.from,
     };
 

@@ -3,6 +3,7 @@ import { getProfileDashboard, getRecentResults } from "@/services/profile.servic
 import { updateCandidateProfile, getOrCreateProfile, getMaskedNationalId } from "@/services/privacy.service";
 import { handleApiError } from "@/lib/errors";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 export async function GET() {
@@ -15,10 +16,31 @@ export async function GET() {
       );
     }
 
-    const [dashboard, recentResults, profile] = await Promise.all([
+    const [dashboard, recentResults, profile, certificates] = await Promise.all([
       getProfileDashboard(session.user.id),
       getRecentResults(session.user.id),
       getOrCreateProfile(session.user.id),
+      prisma.certificate.findMany({
+        where: { candidateId: session.user.id, status: "ACTIVE" },
+        orderBy: { issuedAt: "desc" },
+        take: 3,
+        select: {
+          id: true,
+          certificateNumber: true,
+          issuedAt: true,
+          grade: {
+            select: {
+              session: {
+                select: {
+                  examSchedule: {
+                    select: { exam: { select: { title: true } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
     ]);
 
     // Decrypt & mask nationalId for security — only return last 4 digits
@@ -33,7 +55,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      data: { ...dashboard, recentResults, profile: maskedProfile },
+      data: { ...dashboard, recentResults, profile: maskedProfile, certificates },
     });
   } catch (error) {
     return handleApiError(error);

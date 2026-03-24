@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
         where: {
           tenantId: ctx.tenantId,
           isPassed: true,
-          status: "CONFIRMED",
+          status: "PUBLISHED",
           session: {
             candidateId,
             examSchedule: { examId },
