@@ -6,6 +6,7 @@ import StarterKit from "@tiptap/starter-kit";
 import UnderlineExt from "@tiptap/extension-underline";
 import { Node, mergeAttributes } from "@tiptap/core";
 import katex from "katex";
+import DOMPurify from "isomorphic-dompurify";
 import { legacyToTiptap } from "@/lib/content-utils";
 import { cn } from "@/lib/utils";
 
@@ -355,7 +356,7 @@ export function ContentRenderer({ content, className }: ContentRendererProps) {
     <div
       ref={containerRef}
       className={cn("prose-content", className)}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
     />
   );
 }

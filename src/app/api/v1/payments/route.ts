@@ -3,6 +3,9 @@ import { requirePermission } from "@/lib/rbac";
 import { listPayments, createPayment } from "@/services/payment.service";
 import { paymentFilterSchema, createPaymentSchema } from "@/lib/validations/payment";
 import { handleApiError } from "@/lib/errors";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 5 });
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,6 +21,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = limiter.check(req);
+  if (!rl.success) return rl.response!;
+
   try {
     const session = await requirePermission("payment:create");
     const body = await req.json();

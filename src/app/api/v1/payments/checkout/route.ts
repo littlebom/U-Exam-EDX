@@ -5,8 +5,14 @@ import { stripe, isStripeConfigured, getBaseUrl } from "@/lib/stripe";
 import { createCheckoutSessionSchema } from "@/lib/validations/payment";
 import { createPayment, updatePaymentGatewayRef } from "@/services/payment.service";
 import { handleApiError } from "@/lib/errors";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 5 });
 
 export async function POST(req: NextRequest) {
+  const rl = limiter.check(req);
+  if (!rl.success) return rl.response!;
+
   try {
     // 1. Authenticate candidate
     const session = await auth();

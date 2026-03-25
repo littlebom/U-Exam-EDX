@@ -29,14 +29,17 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV !== "production" ? " 'unsafe-eval'" : ""}`, // unsafe-eval only in dev (Next.js HMR)
-      "style-src 'self' 'unsafe-inline'", // TailwindCSS requires unsafe-inline
+      // Next.js requires 'unsafe-inline' for scripts in dev; in production use strict-dynamic when possible
+      `script-src 'self'${process.env.NODE_ENV !== "production" ? " 'unsafe-inline' 'unsafe-eval'" : " 'unsafe-inline'"}`,
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // TailwindCSS + Google Fonts
       "img-src 'self' blob: data: https:",
-      "font-src 'self' data:",
-      "connect-src 'self'",
-      "frame-src 'self' https://www.google.com https://maps.google.com",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "connect-src 'self' https://api.stripe.com https://accounts.google.com",
+      "frame-src 'self' https://www.google.com https://maps.google.com https://js.stripe.com",
+      "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
+      "upgrade-insecure-requests",
     ].join("; "),
   },
 ];

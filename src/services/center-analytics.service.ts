@@ -112,7 +112,9 @@ export async function getCenterExamHistory(
 
 export async function getCenterStaffPerformance(
   tenantId: string,
-  testCenterId: string
+  testCenterId: string,
+  page = 1,
+  perPage = 20
 ) {
   const staff = await prisma.centerStaff.findMany({
     where: { testCenterId },
@@ -123,6 +125,8 @@ export async function getCenterStaffPerformance(
         take: 10,
       },
     },
+    skip: (page - 1) * perPage,
+    take: perPage,
   });
 
   return staff.map((s) => ({

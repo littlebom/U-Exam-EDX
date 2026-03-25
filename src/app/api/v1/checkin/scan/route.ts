@@ -3,6 +3,9 @@ import { requirePermission } from "@/lib/rbac";
 import { checkInByVoucher } from "@/services/checkin.service";
 import { handleApiError } from "@/lib/errors";
 import { z } from "zod";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 10 });
 
 const scanSchema = z.object({
   voucherCode: z.string().min(1, "กรุณาระบุรหัส Voucher"),
@@ -10,6 +13,9 @@ const scanSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const rl = limiter.check(req);
+  if (!rl.success) return rl.response!;
+
   try {
     const session = await requirePermission("session:manage");
     const body = await req.json();

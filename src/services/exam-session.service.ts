@@ -54,6 +54,27 @@ const sessionInclude = {
   },
 } satisfies Prisma.ExamSessionInclude;
 
+// Light include: schedule + candidate but NO questions/sections (for mutations)
+const sessionIncludeLight = {
+  examSchedule: {
+    include: {
+      exam: {
+        select: {
+          id: true,
+          title: true,
+          duration: true,
+          totalPoints: true,
+          passingScore: true,
+          settings: true,
+        },
+      },
+    },
+  },
+  candidate: {
+    select: { id: true, name: true, email: true },
+  },
+} satisfies Prisma.ExamSessionInclude;
+
 const sessionListInclude = {
   examSchedule: {
     include: {
@@ -367,28 +388,45 @@ export async function autoSave(
       });
     }
 
-    // Upsert answers
-    for (const ans of data.answers) {
-      await tx.examAnswer.upsert({
-        where: {
-          sessionId_questionId: {
-            sessionId,
-            questionId: ans.questionId,
-          },
-        },
-        update: {
-          answer: ans.answer as Prisma.InputJsonValue ?? undefined,
-          answeredAt: new Date(),
-          timeSpent: ans.timeSpent,
-        },
-        create: {
+    // Batch upsert answers — pre-fetch existing to split create vs update
+    const questionIds = data.answers.map((a) => a.questionId);
+    const existing = await tx.examAnswer.findMany({
+      where: { sessionId, questionId: { in: questionIds } },
+      select: { questionId: true },
+    });
+    const existingSet = new Set(existing.map((e) => e.questionId));
+
+    const toCreate = data.answers.filter((a) => !existingSet.has(a.questionId));
+    const toUpdate = data.answers.filter((a) => existingSet.has(a.questionId));
+
+    // Batch create new answers
+    if (toCreate.length > 0) {
+      await tx.examAnswer.createMany({
+        data: toCreate.map((ans) => ({
           sessionId,
           questionId: ans.questionId,
           answer: ans.answer as Prisma.InputJsonValue ?? undefined,
           answeredAt: new Date(),
           timeSpent: ans.timeSpent,
-        },
+        })),
+        skipDuplicates: true,
       });
+    }
+
+    // Update existing answers (must be individual — different values per row)
+    if (toUpdate.length > 0) {
+      await Promise.all(
+        toUpdate.map((ans) =>
+          tx.examAnswer.update({
+            where: { sessionId_questionId: { sessionId, questionId: ans.questionId } },
+            data: {
+              answer: ans.answer as Prisma.InputJsonValue ?? undefined,
+              answeredAt: new Date(),
+              timeSpent: ans.timeSpent,
+            },
+          })
+        )
+      );
     }
   });
 

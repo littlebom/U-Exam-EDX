@@ -150,27 +150,29 @@ export async function getScoreDistribution(
 
   const totalCount = await prisma.grade.count({ where: gradeWhere });
 
-  // Build distribution using individual count queries per bucket (much cheaper than loading all rows)
+  // Fetch all percentages in 1 query, then bucket in memory (avoids N separate count queries)
   const bucketSize = 100 / buckets;
-  const distribution: Array<{ range: string; count: number; percentage: number }> = [];
+  const allPercentages = await prisma.grade.findMany({
+    where: gradeWhere,
+    select: { percentage: true },
+  });
 
+  const bucketCounts = new Array(buckets).fill(0);
+  for (const g of allPercentages) {
+    const pct = g.percentage ?? 0;
+    let idx = Math.floor(pct / bucketSize);
+    if (idx >= buckets) idx = buckets - 1; // 100% goes in last bucket
+    bucketCounts[idx]++;
+  }
+
+  const distribution: Array<{ range: string; count: number; percentage: number }> = [];
   for (let i = 0; i < buckets; i++) {
     const low = Math.round(i * bucketSize);
     const high = Math.round((i + 1) * bucketSize);
-    const count = await prisma.grade.count({
-      where: {
-        ...gradeWhere,
-        percentage: {
-          gte: low,
-          ...(i === buckets - 1 ? { lte: high } : { lt: high }),
-        },
-      },
-    });
-
     distribution.push({
       range: `${low}-${high}%`,
-      count,
-      percentage: totalCount > 0 ? Math.round((count / totalCount) * 1000) / 10 : 0,
+      count: bucketCounts[i],
+      percentage: totalCount > 0 ? Math.round((bucketCounts[i] / totalCount) * 1000) / 10 : 0,
     });
   }
 

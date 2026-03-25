@@ -4,10 +4,16 @@ import { startExam } from "@/services/exam-session.service";
 import { handleApiError, AppError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isIpAllowed } from "@/lib/ip-utils";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 3 });
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
+  const rl = limiter.check(request);
+  if (!rl.success) return rl.response!;
+
   try {
     const session = await auth();
     if (!session?.user?.id) {

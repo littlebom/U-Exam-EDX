@@ -528,17 +528,109 @@ export async function publishGrade(tenantId: string, gradeId: string) {
 // ─── Publish Multiple Grades ────────────────────────────────────────
 
 export async function bulkPublishGrades(tenantId: string, gradeIds: string[]) {
-  // Use publishGrade for each to trigger notifications + auto-certificate
-  const results = [];
-  for (const gradeId of gradeIds) {
-    try {
-      const result = await publishGrade(tenantId, gradeId);
-      results.push(result);
-    } catch (err) {
-      console.error(`[bulkPublish] Failed to publish grade ${gradeId}:`, err);
+  if (gradeIds.length === 0) return { count: 0 };
+
+  // 1. Batch validate: only publish COMPLETED grades belonging to this tenant
+  const eligibleGrades = await prisma.grade.findMany({
+    where: {
+      id: { in: gradeIds },
+      tenantId,
+      status: "COMPLETED",
+    },
+    select: {
+      id: true,
+      totalScore: true,
+      maxScore: true,
+      isPassed: true,
+      session: {
+        select: {
+          candidateId: true,
+          examSchedule: {
+            select: {
+              id: true,
+              settings: true,
+              exam: { select: { title: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (eligibleGrades.length === 0) return { count: 0 };
+
+  const eligibleIds = eligibleGrades.map((g) => g.id);
+
+  // 2. Batch status update in one query
+  await prisma.grade.updateMany({
+    where: { id: { in: eligibleIds } },
+    data: {
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+    },
+  });
+
+  // 3. Handle side effects (notifications, certificates, badges) per grade
+  for (const grade of eligibleGrades) {
+    const examTitle = grade.session.examSchedule.exam.title;
+
+    // Audit log
+    logAdminAction("GRADE_CONFIRM", {
+      userId: "system",
+      tenantId,
+      target: grade.id,
+      detail: { candidateId: grade.session.candidateId, score: grade.totalScore, isPassed: grade.isPassed },
+    });
+
+    // Notify candidate
+    sendNotification({
+      tenantId,
+      userId: grade.session.candidateId,
+      type: "RESULT_PUBLISHED",
+      title: "ผลสอบของคุณพร้อมแล้ว",
+      message: `${examTitle} — คะแนน ${grade.totalScore}/${grade.maxScore} (${grade.isPassed ? "ผ่าน" : "ไม่ผ่าน"})`,
+      link: "/profile/results",
+    }).catch((err) => console.error("[notification] bulkPublish error:", err));
+
+    // Auto-issue certificate + badge if passed
+    const schedSettings = grade.session.examSchedule.settings as Record<string, unknown> | null;
+    if (grade.isPassed) {
+      try {
+        const templateId = schedSettings?.certificateTemplateId as string | undefined;
+        if (templateId) {
+          const { issueCertificate } = await import("@/services/certificate.service");
+          await issueCertificate(tenantId, {
+            templateId,
+            candidateId: grade.session.candidateId,
+            gradeId: grade.id,
+          });
+
+          sendNotification({
+            tenantId,
+            userId: grade.session.candidateId,
+            type: "CERTIFICATE_ISSUED",
+            title: "ใบรับรองของคุณพร้อมแล้ว",
+            message: `คุณได้รับใบรับรองสำหรับ ${examTitle}`,
+            link: "/profile/certificates",
+          }).catch(() => {});
+        }
+      } catch (err) {
+        console.error("[auto-certificate] bulkPublish error:", err);
+      }
+
+      const badgeEnabled = !!(schedSettings?.enableBadge);
+      if (badgeEnabled) {
+        try {
+          const { autoAwardBadges } = await import("@/lib/badge-award");
+          await autoAwardBadges(grade.id);
+        } catch (err) {
+          console.error("[auto-badge] bulkPublish error:", err);
+        }
+      }
     }
   }
-  return { count: results.length };
+
+  return { count: eligibleGrades.length };
 }
 
 // ─── Grading Stats ──────────────────────────────────────────────────

@@ -3,6 +3,9 @@ import { handleApiError, AppError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth-utils";
 import { z } from "zod";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 3 });
 
 const candidateRegisterSchema = z.object({
   name: z
@@ -20,6 +23,9 @@ const candidateRegisterSchema = z.object({
 
 // POST — register a new candidate user (no tenant required)
 export async function POST(request: NextRequest) {
+  const rl = limiter.check(request);
+  if (!rl.success) return rl.response!;
+
   try {
     const body = await request.json();
     const parsed = candidateRegisterSchema.safeParse(body);

@@ -5,6 +5,9 @@ import { autoGradeSession } from "@/services/auto-grading.service";
 import { sendNotification } from "@/services/notification.service";
 import { prisma } from "@/lib/prisma";
 import { handleApiError, AppError } from "@/lib/errors";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 3 });
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -101,6 +104,9 @@ async function triggerAutoGrade(sessionId: string) {
 // ─── POST handler ────────────────────────────────────────────────
 
 export async function POST(_request: NextRequest, context: RouteContext) {
+  const rl = limiter.check(_request);
+  if (!rl.success) return rl.response!;
+
   try {
     const session = await auth();
     if (!session?.user?.id) {

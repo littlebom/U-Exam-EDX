@@ -8,10 +8,16 @@ import {
   updateRegistration,
 } from "@/services/registration.service";
 import { bookSeat } from "@/services/seat-booking.service";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 5 });
 
 type RouteContext = { params: Promise<{ scheduleId: string }> };
 
 export async function POST(req: NextRequest, context: RouteContext) {
+  const rl = limiter.check(req);
+  if (!rl.success) return rl.response!;
+
   try {
     const session = await auth();
     if (!session?.user?.id) {

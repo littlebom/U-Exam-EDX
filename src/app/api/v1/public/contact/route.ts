@@ -4,6 +4,9 @@ import { handleApiError, errors } from "@/lib/errors";
 import { z } from "zod";
 import { decryptSecret } from "@/lib/crypto";
 import nodemailer from "nodemailer";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+const limiter = createRateLimiter({ windowMs: 60_000, maxRequests: 3 });
 
 interface TenantSettings {
   email?: string;
@@ -75,6 +78,9 @@ const contactFormSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const rl = limiter.check(req);
+  if (!rl.success) return rl.response!;
+
   try {
     const body = await req.json();
     const data = contactFormSchema.parse(body);

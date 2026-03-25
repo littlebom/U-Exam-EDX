@@ -1,6 +1,7 @@
 "use client";
 
 import katex from "katex";
+import DOMPurify from "isomorphic-dompurify";
 
 // ============================================================
 // Utilities
@@ -78,7 +79,7 @@ export function OptionTextRenderer({ text, className }: OptionTextRendererProps)
               <span
                 key={i}
                 className="math-inline-option"
-                dangerouslySetInnerHTML={{ __html: html }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
               />
             );
           } catch {

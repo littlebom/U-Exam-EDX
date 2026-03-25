@@ -730,6 +730,7 @@ model ExamSession {
   @@index([examScheduleId])
   @@index([candidateId])
   @@index([status])
+  @@index([candidateId, status])
   @@map("exam_sessions")
 }
 
@@ -812,6 +813,7 @@ model Grade {
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, publishedAt])
+  @@index([tenantId, status, percentage])
   @@map("grades")
 }
 
@@ -851,6 +853,7 @@ model GradeAnswer {
   moderatedBy User?      @relation("GradeAnswerModeratedBy", fields: [moderatedById], references: [id])
 
   @@index([gradeId])
+  @@index([gradeId, isAutoGraded])
   @@map("grade_answers")
 }
 

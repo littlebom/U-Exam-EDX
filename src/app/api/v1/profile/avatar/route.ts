@@ -30,9 +30,20 @@ export async function POST(request: NextRequest) {
       throw new AppError("VALIDATION_ERROR", "รูปภาพมีขนาดใหญ่เกินไป (สูงสุด 5MB)", 400);
     }
 
+    // Validate MIME type
+    const mimeMatch = image.match(/^data:image\/(jpeg|jpg|png|webp|gif);base64,/);
+    if (!mimeMatch) {
+      throw new AppError("VALIDATION_ERROR", "รองรับเฉพาะ JPEG, PNG, WebP, GIF", 400);
+    }
+
     // Extract base64 data
     const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
     const imageBuffer = Buffer.from(base64Data, "base64");
+
+    // Validate actual buffer size (base64 string is ~33% larger than binary)
+    if (imageBuffer.length > 5 * 1024 * 1024) {
+      throw new AppError("VALIDATION_ERROR", "รูปภาพมีขนาดใหญ่เกินไป (สูงสุด 5MB)", 400);
+    }
 
     // Process with sharp: resize 256×256, convert to WebP
     const processed = await sharp(imageBuffer)

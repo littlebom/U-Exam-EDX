@@ -25,6 +25,19 @@ export async function verifyExternalRequest(req: NextRequest): Promise<
     };
   }
 
+  // Validate timestamp within 5-minute window (prevent replay attacks)
+  const requestTime = parseInt(timestamp, 10);
+  const now = Math.floor(Date.now() / 1000);
+  if (isNaN(requestTime) || Math.abs(now - requestTime) > 300) {
+    return {
+      success: false,
+      response: NextResponse.json(
+        { success: false, error: { message: "Timestamp expired or invalid" } },
+        { status: 401 }
+      ),
+    };
+  }
+
   // Find connection by API key
   const connection = await prisma.ewalletConnection.findFirst({
     where: { apiKey, isActive: true },

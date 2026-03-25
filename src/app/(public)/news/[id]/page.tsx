@@ -7,6 +7,7 @@ import { ArrowLeft, Calendar, User, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import DOMPurify from "isomorphic-dompurify";
 
 interface NewsDetail {
   id: string;
@@ -116,7 +117,7 @@ export default function NewsDetailPage() {
         <CardContent className="pt-6">
           <div
             className="prose prose-sm dark:prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: news.content }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(news.content) }}
           />
         </CardContent>
       </Card>
