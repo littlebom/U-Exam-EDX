@@ -13,6 +13,7 @@ import {
   Users,
   Settings,
   ScanFace,
+  Link2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -163,6 +164,7 @@ export const sidebarNav: NavItem[] = [
       { title: "อีเมล (SMTP)", href: "/admin/settings/email" },
       { title: "Authentication (OAuth)", href: "/admin/settings/auth" },
       { title: "กรอบสมรรถนะ", href: "/admin/settings/competency" },
+      { title: "LTI Integration", href: "/admin/settings/lti" },
     ],
   },
 ];

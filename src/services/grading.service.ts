@@ -522,6 +522,22 @@ export async function publishGrade(tenantId: string, gradeId: string) {
     }
   }
 
+  // LTI Score Passback — ส่งคะแนนกลับ edX (ถ้าผูก account ไว้)
+  try {
+    const { passbackScore } = await import("@/services/lti.service");
+    const result = await passbackScore(
+      grade.session.candidateId,
+      grade.totalScore ?? 0,
+      grade.maxScore ?? 100
+    );
+    if (result.success) {
+      console.log(`[lti-passback] Score sent to ${result.platformName} for candidate ${grade.session.candidateId}`);
+    }
+  } catch (err) {
+    // LTI passback failure should not block grade publishing
+    console.error("[lti-passback] error:", err);
+  }
+
   return updated;
 }
 
