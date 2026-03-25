@@ -12,6 +12,7 @@ import {
   Users,
   ArrowRightLeft,
   Clock,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,13 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { useList } from "@/hooks/use-api";
 
@@ -88,6 +96,25 @@ type LtiUserLink = {
   createdAt: string;
 };
 
+type LtiCourseMapping = {
+  id: string;
+  platformId: string;
+  examId: string;
+  resourceLinkId: string | null;
+  contextId: string | null;
+  contextTitle: string | null;
+  isActive: boolean;
+  createdAt: string;
+  platform: { id: string; name: string };
+  exam: { id: string; title: string };
+  _count: { userLinks: number };
+};
+
+type ExamOption = {
+  id: string;
+  title: string;
+};
+
 type LtiLaunchLog = {
   id: string;
   action: string;
@@ -110,6 +137,13 @@ const EMPTY_FORM: Omit<LtiPlatform, "id" | "isActive" | "createdAt" | "_count"> 
   authLoginUrl: "",
   authTokenUrl: "",
   jwksUrl: "",
+};
+
+const EMPTY_MAPPING_FORM = {
+  platformId: "",
+  examId: "",
+  contextId: "",
+  contextTitle: "",
 };
 
 function copyToClipboard(text: string) {
@@ -163,6 +197,21 @@ export default function LtiSettingsPage() {
     { page: linksPage, perPage: 20 }
   );
 
+  // --- Course Mappings ---
+  const [mappingsPage, setMappingsPage] = useState(1);
+  const { data: mappingsResult, isLoading: mappingsLoading } = useList<LtiCourseMapping>(
+    "lti-course-mappings",
+    "/api/v1/lti/course-mappings",
+    { page: mappingsPage, perPage: 20 }
+  );
+
+  // --- Exams (for mapping dialog select) ---
+  const { data: examsResult } = useList<ExamOption>(
+    "exams-for-mapping",
+    "/api/v1/exams",
+    { perPage: 200, status: "PUBLISHED" }
+  );
+
   // --- Launch Logs ---
   const [logsPage, setLogsPage] = useState(1);
   const { data: logsResult, isLoading: logsLoading } = useList<LtiLaunchLog>(
@@ -176,6 +225,12 @@ export default function LtiSettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // --- Course Mapping Dialog state ---
+  const [showMappingDialog, setShowMappingDialog] = useState(false);
+  const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
+  const [mappingForm, setMappingForm] = useState(EMPTY_MAPPING_FORM);
+  const [deleteMappingId, setDeleteMappingId] = useState<string | null>(null);
 
   // --- Mutations ---
   const saveMutation = useMutation({
@@ -220,6 +275,49 @@ export default function LtiSettingsPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // --- Course Mapping Mutations ---
+  const saveMappingMutation = useMutation({
+    mutationFn: async () => {
+      const isEdit = !!editingMappingId;
+      const url = isEdit
+        ? `/api/v1/lti/course-mappings/${editingMappingId}`
+        : "/api/v1/lti/course-mappings";
+      const res = await fetch(url, {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mappingForm),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message ?? "เกิดข้อผิดพลาด");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success(editingMappingId ? "อัปเดตการเชื่อมต่อสำเร็จ" : "เพิ่มการเชื่อมต่อสำเร็จ");
+      closeMappingDialog();
+      queryClient.invalidateQueries({ queryKey: ["lti-course-mappings"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deleteMappingMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/v1/lti/course-mappings/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message ?? "เกิดข้อผิดพลาด");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success("ลบการเชื่อมต่อสำเร็จ");
+      setDeleteMappingId(null);
+      queryClient.invalidateQueries({ queryKey: ["lti-course-mappings"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   // --- Helpers ---
   function openCreate() {
     setEditingId(null);
@@ -251,9 +349,39 @@ export default function LtiSettingsPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function openCreateMapping() {
+    setEditingMappingId(null);
+    setMappingForm(EMPTY_MAPPING_FORM);
+    setShowMappingDialog(true);
+  }
+
+  function openEditMapping(m: LtiCourseMapping) {
+    setEditingMappingId(m.id);
+    setMappingForm({
+      platformId: m.platformId,
+      examId: m.examId,
+      contextId: m.contextId ?? "",
+      contextTitle: m.contextTitle ?? "",
+    });
+    setShowMappingDialog(true);
+  }
+
+  function closeMappingDialog() {
+    setShowMappingDialog(false);
+    setEditingMappingId(null);
+    setMappingForm(EMPTY_MAPPING_FORM);
+  }
+
+  function updateMappingField(field: keyof typeof EMPTY_MAPPING_FORM, value: string) {
+    setMappingForm((prev) => ({ ...prev, [field]: value }));
+  }
+
   const platforms: LtiPlatform[] = platformsResult?.data ?? [];
   const userLinks: LtiUserLink[] = linksResult?.data ?? [];
   const linksMeta = linksResult?.meta;
+  const courseMappings: LtiCourseMapping[] = mappingsResult?.data ?? [];
+  const mappingsMeta = mappingsResult?.meta;
+  const examsOptions: ExamOption[] = examsResult?.data ?? [];
   const launchLogs: LtiLaunchLog[] = logsResult?.data ?? [];
   const logsMeta = logsResult?.meta;
 
@@ -277,6 +405,10 @@ export default function LtiSettingsPage() {
           <TabsTrigger value="platforms" className="gap-1.5">
             <Link2 className="h-4 w-4" />
             แพลตฟอร์ม
+          </TabsTrigger>
+          <TabsTrigger value="course-mappings" className="gap-1.5">
+            <BookOpen className="h-4 w-4" />
+            การเชื่อมต่อคอร์ส
           </TabsTrigger>
           <TabsTrigger value="linked-users" className="gap-1.5">
             <Users className="h-4 w-4" />
@@ -389,7 +521,151 @@ export default function LtiSettingsPage() {
         </TabsContent>
 
         {/* ============================================================== */}
-        {/* Tab 2: Linked Users                                            */}
+        {/* Tab 2: Course Mappings                                         */}
+        {/* ============================================================== */}
+        <TabsContent value="course-mappings" className="space-y-4">
+          <div className="flex justify-end">
+            <Button className="gap-1.5" onClick={openCreateMapping}>
+              <Plus className="h-4 w-4" />
+              เพิ่มการเชื่อมต่อ
+            </Button>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">การเชื่อมต่อคอร์ส</CardTitle>
+              <CardDescription>
+                แมปคอร์สจาก LMS กับข้อสอบใน U-Exam เพื่อส่งคะแนนกลับอัตโนมัติ
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {mappingsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : courseMappings.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <BookOpen className="mb-3 h-12 w-12 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">
+                    ยังไม่มีการเชื่อมต่อคอร์ส
+                  </p>
+                  <Button variant="outline" className="mt-4 gap-1.5" onClick={openCreateMapping}>
+                    <Plus className="h-4 w-4" />
+                    เพิ่มการเชื่อมต่อแรก
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Platform</TableHead>
+                        <TableHead>คอร์ส edX</TableHead>
+                        <TableHead>ข้อสอบ U-Exam</TableHead>
+                        <TableHead>สถานะ</TableHead>
+                        <TableHead>ผู้ใช้เชื่อมต่อ</TableHead>
+                        <TableHead className="text-right">จัดการ</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {courseMappings.map((m) => (
+                        <TableRow key={m.id}>
+                          <TableCell>
+                            <Badge variant="outline">{m.platform.name}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="text-sm font-medium">{m.contextTitle || "-"}</p>
+                              {m.contextId && (
+                                <p className="text-xs text-muted-foreground font-mono">
+                                  {m.contextId}
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <p className="text-sm font-medium">{m.exam.title}</p>
+                          </TableCell>
+                          <TableCell>
+                            {m.isActive ? (
+                              <Badge
+                                variant="secondary"
+                                className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                              >
+                                Active
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                className="bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400"
+                              >
+                                Inactive
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Users className="h-3.5 w-3.5" />
+                              {m._count.userLinks}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => openEditMapping(m)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => setDeleteMappingId(m.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+
+                  {/* Pagination */}
+                  {mappingsMeta && mappingsMeta.totalPages > 1 && (
+                    <div className="mt-4 flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        ทั้งหมด {mappingsMeta.total} รายการ
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={mappingsPage <= 1}
+                          onClick={() => setMappingsPage((p) => p - 1)}
+                        >
+                          ก่อนหน้า
+                        </Button>
+                        <span className="flex items-center text-sm text-muted-foreground">
+                          หน้า {mappingsPage} / {mappingsMeta.totalPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={mappingsPage >= mappingsMeta.totalPages}
+                          onClick={() => setMappingsPage((p) => p + 1)}
+                        >
+                          ถัดไป
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ============================================================== */}
+        {/* Tab 3: Linked Users                                            */}
         {/* ============================================================== */}
         <TabsContent value="linked-users" className="space-y-4">
           <Card>
@@ -716,6 +992,131 @@ export default function LtiSettingsPage() {
               disabled={deleteMutation.isPending}
             >
               {deleteMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              ลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ================================================================ */}
+      {/* Course Mapping Create / Edit Dialog                              */}
+      {/* ================================================================ */}
+      <Dialog open={showMappingDialog} onOpenChange={(open) => !open && closeMappingDialog()}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingMappingId ? "แก้ไขการเชื่อมต่อคอร์ส" : "เพิ่มการเชื่อมต่อคอร์ส"}
+            </DialogTitle>
+            <DialogDescription>
+              แมปคอร์สจาก edX กับข้อสอบใน U-Exam เพื่อส่งคะแนนกลับอัตโนมัติ
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="mapping-platform">Platform</Label>
+              <Select
+                value={mappingForm.platformId}
+                onValueChange={(v) => updateMappingField("platformId", v)}
+                disabled={!!editingMappingId}
+              >
+                <SelectTrigger id="mapping-platform">
+                  <SelectValue placeholder="เลือก Platform" />
+                </SelectTrigger>
+                <SelectContent>
+                  {platforms.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mapping-exam">ข้อสอบ U-Exam</Label>
+              <Select
+                value={mappingForm.examId}
+                onValueChange={(v) => updateMappingField("examId", v)}
+              >
+                <SelectTrigger id="mapping-exam">
+                  <SelectValue placeholder="เลือกข้อสอบ" />
+                </SelectTrigger>
+                <SelectContent>
+                  {examsOptions.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mapping-contextId">Context ID (Course ID จาก edX)</Label>
+              <Input
+                id="mapping-contextId"
+                value={mappingForm.contextId}
+                onChange={(e) => updateMappingField("contextId", e.target.value)}
+                placeholder="course-v1:SRU+CS101+2026"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mapping-contextTitle">ชื่อคอร์ส (Context Title)</Label>
+              <Input
+                id="mapping-contextTitle"
+                value={mappingForm.contextTitle}
+                onChange={(e) => updateMappingField("contextTitle", e.target.value)}
+                placeholder="CS101 Introduction to Computer Science"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeMappingDialog}>
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={() => saveMappingMutation.mutate()}
+              disabled={
+                !mappingForm.platformId ||
+                !mappingForm.examId ||
+                saveMappingMutation.isPending
+              }
+            >
+              {saveMappingMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : editingMappingId ? (
+                <Pencil className="mr-2 h-4 w-4" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              {editingMappingId ? "บันทึก" : "เพิ่ม"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ================================================================ */}
+      {/* Course Mapping Delete Confirmation                               */}
+      {/* ================================================================ */}
+      <AlertDialog open={!!deleteMappingId} onOpenChange={(open) => !open && setDeleteMappingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบการเชื่อมต่อคอร์ส</AlertDialogTitle>
+            <AlertDialogDescription>
+              การลบการเชื่อมต่อจะทำให้ไม่สามารถส่งคะแนนกลับ LMS สำหรับคอร์สนี้ได้อีก
+              ผู้ใช้ที่เชื่อมต่อไว้จะยังคงอยู่ในระบบ
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteMappingId && deleteMappingMutation.mutate(deleteMappingId)}
+              disabled={deleteMappingMutation.isPending}
+            >
+              {deleteMappingMutation.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Trash2 className="mr-2 h-4 w-4" />

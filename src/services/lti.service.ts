@@ -185,10 +185,27 @@ export async function linkOrMatchUser(
     email ||
     "LTI User";
 
-  // 1. ตรวจว่า link มีอยู่แล้วหรือไม่
-  const existingLink = await prisma.ltiUserLink.findUnique({
+  const resourceLink =
+    claims["https://purl.imsglobal.org/spec/lti/claim/resource_link"];
+  const context =
+    claims["https://purl.imsglobal.org/spec/lti/claim/context"];
+  const agsEndpoint =
+    claims["https://purl.imsglobal.org/spec/lti-ags/claim/endpoint"];
+
+  // 1. Find course mapping by contextId or resourceLinkId
+  const courseMapping = await findCourseMapping(
+    platformId,
+    context?.id ?? null,
+    resourceLink?.id ?? null
+  );
+
+  // 2. ตรวจว่า link มีอยู่แล้วหรือไม่ (scoped to courseMappingId)
+  const courseMappingId = courseMapping?.id ?? null;
+  const existingLink = await prisma.ltiUserLink.findFirst({
     where: {
-      platformId_ltiUserId: { platformId, ltiUserId },
+      platformId,
+      ltiUserId,
+      courseMappingId,
     },
     select: { userId: true },
   });
@@ -197,7 +214,7 @@ export async function linkOrMatchUser(
     return { userId: existingLink.userId, isNewUser: false, isNewLink: false };
   }
 
-  // 2. ถ้ายังไม่มี link → หา user ตาม email
+  // 3. ถ้ายังไม่มี link → หา user ตาม email
   let userId: string | null = null;
   let isNewUser = false;
 
@@ -211,7 +228,7 @@ export async function linkOrMatchUser(
     }
   }
 
-  // 3. ถ้าไม่พบ user → สร้างใหม่
+  // 4. ถ้าไม่พบ user → สร้างใหม่
   if (!userId) {
     const randomPassword = crypto.randomBytes(32).toString("hex");
     const newUser = await prisma.user.create({
@@ -240,14 +257,7 @@ export async function linkOrMatchUser(
     }
   }
 
-  // 4. สร้าง link
-  const resourceLink =
-    claims["https://purl.imsglobal.org/spec/lti/claim/resource_link"];
-  const context =
-    claims["https://purl.imsglobal.org/spec/lti/claim/context"];
-  const agsEndpoint =
-    claims["https://purl.imsglobal.org/spec/lti-ags/claim/endpoint"];
-
+  // 5. สร้าง link (with courseMappingId if found)
   await prisma.ltiUserLink.create({
     data: {
       platformId,
@@ -259,6 +269,7 @@ export async function linkOrMatchUser(
       resourceLinkId: resourceLink?.id ?? null,
       contextId: context?.id ?? null,
       contextTitle: context?.title ?? null,
+      courseMappingId,
     },
   });
 
@@ -280,38 +291,99 @@ export async function updateLineitem(
     claims["https://purl.imsglobal.org/spec/lti/claim/context"];
 
   if (agsEndpoint?.lineitem) {
-    await prisma.ltiUserLink.update({
+    // Find course mapping for this context/resource
+    const courseMapping = await findCourseMapping(
+      platformId,
+      context?.id ?? null,
+      resourceLink?.id ?? null
+    );
+
+    const link = await prisma.ltiUserLink.findFirst({
       where: {
-        platformId_ltiUserId: { platformId, ltiUserId },
+        platformId,
+        ltiUserId,
+        courseMappingId: courseMapping?.id ?? null,
       },
-      data: {
-        lineitemUrl: agsEndpoint.lineitem,
-        resourceLinkId: resourceLink?.id,
-        contextId: context?.id,
-        contextTitle: context?.title,
-        ltiName:
-          claims.name ||
-          [claims.given_name, claims.family_name].filter(Boolean).join(" ") ||
-          undefined,
-        ltiEmail: claims.email || undefined,
-      },
+      select: { id: true },
     });
+
+    if (link) {
+      await prisma.ltiUserLink.update({
+        where: { id: link.id },
+        data: {
+          lineitemUrl: agsEndpoint.lineitem,
+          resourceLinkId: resourceLink?.id,
+          contextId: context?.id,
+          contextTitle: context?.title,
+          ltiName:
+            claims.name ||
+            [claims.given_name, claims.family_name].filter(Boolean).join(" ") ||
+            undefined,
+          ltiEmail: claims.email || undefined,
+        },
+      });
+    }
   }
+}
+
+// ─── Find Course Mapping ────────────────────────────────────────────
+
+async function findCourseMapping(
+  platformId: string,
+  contextId: string | null,
+  resourceLinkId: string | null
+) {
+  if (!contextId && !resourceLinkId) return null;
+
+  // Try contextId first, then resourceLinkId
+  const where = [];
+  if (contextId) {
+    where.push({ platformId, contextId, isActive: true });
+  }
+  if (resourceLinkId) {
+    where.push({ platformId, resourceLinkId, isActive: true });
+  }
+
+  return prisma.ltiCourseMapping.findFirst({
+    where: { OR: where },
+    select: { id: true, examId: true },
+  });
 }
 
 // ─── Score Passback (AGS) ───────────────────────────────────────────
 
 export async function passbackScore(
   userId: string,
+  examId: string,
   score: number,
   maxScore: number
 ): Promise<{ success: boolean; platformName?: string; error?: string }> {
-  // Find user's LTI link with lineitem
+  // Find user's LTI link with lineitem — prefer course-specific link for this exam
   const link = await prisma.ltiUserLink.findFirst({
     where: {
       userId,
       lineitemUrl: { not: null },
       platform: { isActive: true },
+      courseMapping: { examId },
+    },
+    include: {
+      platform: {
+        select: {
+          id: true,
+          name: true,
+          clientId: true,
+          authTokenUrl: true,
+          privateKey: true,
+        },
+      },
+    },
+  }) ?? await prisma.ltiUserLink.findFirst({
+    // Fallback: generic link (no courseMapping)
+    where: {
+      userId,
+      lineitemUrl: { not: null },
+      platform: { isActive: true },
+      courseMappingId: null,
     },
     include: {
       platform: {

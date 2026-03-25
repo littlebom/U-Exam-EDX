@@ -440,7 +440,7 @@ export async function publishGrade(tenantId: string, gradeId: string) {
             select: {
               id: true,
               settings: true,
-              exam: { select: { title: true } },
+              exam: { select: { id: true, title: true } },
             },
           },
         },
@@ -525,8 +525,10 @@ export async function publishGrade(tenantId: string, gradeId: string) {
   // LTI Score Passback — ส่งคะแนนกลับ edX (ถ้าผูก account ไว้)
   try {
     const { passbackScore } = await import("@/services/lti.service");
+    const examId = grade.session.examSchedule.exam.id;
     const result = await passbackScore(
       grade.session.candidateId,
+      examId,
       grade.totalScore ?? 0,
       grade.maxScore ?? 100
     );
