@@ -32,6 +32,9 @@ export async function PUT(
     const parsed = updateExamSchema.parse(body);
     const exam = await updateExam(session.tenantId, id, parsed);
 
+    const { logAdminAction } = await import("@/services/audit-log.service");
+    logAdminAction("EXAM_UPDATE", { userId: session.userId, tenantId: session.tenantId, target: id });
+
     return NextResponse.json({ success: true, data: exam });
   } catch (error) {
     return handleApiError(error);
@@ -46,6 +49,9 @@ export async function DELETE(
     const session = await requirePermission("exam:delete");
     const { id } = await context.params;
     await deleteExam(session.tenantId, id);
+
+    const { logAdminAction } = await import("@/services/audit-log.service");
+    logAdminAction("EXAM_DELETE", { userId: session.userId, tenantId: session.tenantId, target: id });
 
     return NextResponse.json({ success: true });
   } catch (error) {

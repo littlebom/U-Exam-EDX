@@ -42,6 +42,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       settings: data.settings as Record<string, unknown>,
     });
 
+    const { logAdminAction } = await import("@/services/audit-log.service");
+    logAdminAction("SETTINGS_UPDATE", { userId: session.userId, tenantId, detail: { fields: Object.keys(data) } });
+
     return NextResponse.json({ success: true, data: tenant });
   } catch (error) {
     return handleApiError(error);

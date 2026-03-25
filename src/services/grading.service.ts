@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { errors } from "@/lib/errors";
 import { sendNotification } from "@/services/notification.service";
+import { logAdminAction } from "@/services/audit-log.service";
 import { buildPaginationMeta } from "@/types";
 import type { PaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
@@ -462,6 +463,14 @@ export async function publishGrade(tenantId: string, gradeId: string) {
     include: gradeListInclude,
   });
 
+  // Log grade publish
+  logAdminAction("GRADE_CONFIRM", {
+    userId: "system",
+    tenantId,
+    target: gradeId,
+    detail: { candidateId: grade.session.candidateId, score: grade.totalScore, isPassed: grade.isPassed },
+  });
+
   // Notify candidate
   const examTitle = grade.session.examSchedule.exam.title;
   sendNotification({
@@ -473,10 +482,10 @@ export async function publishGrade(tenantId: string, gradeId: string) {
     link: "/profile/results",
   }).catch((err) => console.error("[notification] publishGrade error:", err));
 
-  // Auto-issue certificate if passed and template is configured
+  // Auto-issue certificate + badge if passed
+  const schedSettings = grade.session.examSchedule.settings as Record<string, unknown> | null;
   if (grade.isPassed) {
     try {
-      const schedSettings = grade.session.examSchedule.settings as Record<string, unknown> | null;
       const templateId = schedSettings?.certificateTemplateId as string | undefined;
       if (templateId) {
         const { issueCertificate } = await import("@/services/certificate.service");
@@ -499,6 +508,17 @@ export async function publishGrade(tenantId: string, gradeId: string) {
     } catch (err) {
       // Certificate issue failure should not block grade publishing
       console.error("[auto-certificate] error:", err);
+    }
+
+    // Auto-award badge based on BadgeTemplate criteria (if enabled in schedule settings)
+    const badgeEnabled = !!(schedSettings?.enableBadge);
+    if (badgeEnabled) {
+      try {
+        const { autoAwardBadges } = await import("@/lib/badge-award");
+        await autoAwardBadges(grade.id);
+      } catch (err) {
+        console.error("[auto-badge] error:", err);
+      }
     }
   }
 

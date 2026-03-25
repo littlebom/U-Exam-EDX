@@ -95,6 +95,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Fire-and-forget audit log
+    import("@/services/audit-log.service").then(({ logAudit }) =>
+      logAudit({
+        action: "FACE_IMAGE_UPLOAD",
+        category: "USER",
+        userId: session.user!.id,
+        target: session.user!.id,
+        detail: { imageUrl, hasDescriptor: !!descriptor },
+      })
+    ).catch(() => {});
+
     return NextResponse.json({
       success: true,
       data: { imageUrl, hasDescriptor: !!descriptor },

@@ -30,6 +30,16 @@ export async function POST(request: NextRequest) {
       { ...questionData, tagIds: tagIds ?? [] }
     );
 
+    // Fire-and-forget audit log
+    import("@/services/audit-log.service").then(({ logAdminAction }) =>
+      logAdminAction("QUESTION_CREATE", {
+        userId: session.userId,
+        tenantId: session.tenantId,
+        target: question.id,
+        detail: { type: questionData.type, difficulty: questionData.difficulty },
+      })
+    ).catch(() => {});
+
     return NextResponse.json({ success: true, data: question }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

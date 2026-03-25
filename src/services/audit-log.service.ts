@@ -27,15 +27,20 @@ export type AuditAction =
   | "CERTIFICATE_ISSUE"
   | "CERTIFICATE_REVOKE"
   | "GRADE_CONFIRM"
+  | "QUESTION_CREATE"
+  | "QUESTION_IMPORT"
   // User
   | "USER_CREATE"
   | "USER_UPDATE"
   | "USER_DELETE"
   | "ROLE_CHANGE"
+  | "PROFILE_UPDATE"
+  | "FACE_IMAGE_UPLOAD"
   // System
   | "SETTINGS_UPDATE"
   | "EMAIL_SENT"
-  | "NOTIFICATION_SENT";
+  | "NOTIFICATION_SENT"
+  | "BADGE_AWARDED";
 
 interface LogAuditParams {
   tenantId?: string | null;
@@ -68,19 +73,67 @@ const ACTION_CATEGORY: Record<string, AuditCategory> = {
   CERTIFICATE_ISSUE: "ADMIN",
   CERTIFICATE_REVOKE: "ADMIN",
   GRADE_CONFIRM: "ADMIN",
+  QUESTION_CREATE: "ADMIN",
+  QUESTION_IMPORT: "ADMIN",
   USER_CREATE: "USER",
   USER_UPDATE: "USER",
   USER_DELETE: "USER",
   ROLE_CHANGE: "USER",
+  PROFILE_UPDATE: "USER",
+  FACE_IMAGE_UPLOAD: "USER",
   SETTINGS_UPDATE: "SYSTEM",
   EMAIL_SENT: "SYSTEM",
   NOTIFICATION_SENT: "SYSTEM",
+  BADGE_AWARDED: "SYSTEM",
 };
 
-// ─── Log Audit (non-blocking) ───────────────────────────────────────
+// ─── JSONL File Writer ───────────────────────────────────────────────
+
+async function writeAuditLogFile(params: LogAuditParams) {
+  try {
+    // Dynamic import to avoid bundling fs in client
+    const fs = await import("fs");
+    const path = await import("path");
+
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10); // 2026-03-25
+    const logDir = path.join(process.cwd(), "logs", "audit");
+
+    // Ensure directory exists
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+
+    const logEntry = JSON.stringify({
+      timestamp: now.toISOString(),
+      action: params.action,
+      category: params.category ?? ACTION_CATEGORY[params.action] ?? "SYSTEM",
+      userId: params.userId ?? null,
+      tenantId: params.tenantId ?? null,
+      target: params.target ?? null,
+      detail: params.detail ?? null,
+      ipAddress: params.ipAddress ?? null,
+    });
+
+    fs.appendFileSync(
+      path.join(logDir, `${dateStr}.jsonl`),
+      logEntry + "\n",
+      "utf-8"
+    );
+  } catch (err) {
+    console.error("[audit-log] Failed to write file:", err);
+  }
+}
+
+// ─── Log Audit (non-blocking) — writes to DB + JSONL file ───────────
 
 export function logAudit(params: LogAuditParams) {
-  // Fire and forget — never block the caller
+  // 1. Write to JSONL file (async, non-blocking)
+  writeAuditLogFile(params).catch((err) =>
+    console.error("[audit-log] JSONL write error:", err)
+  );
+
+  // 2. Write to DB (async, fire and forget)
   prisma.auditLog
     .create({
       data: {
@@ -94,7 +147,7 @@ export function logAudit(params: LogAuditParams) {
       },
     })
     .catch((err) => {
-      console.error("[audit-log] Failed to write:", err);
+      console.error("[audit-log] Failed to write DB:", err);
     });
 }
 
@@ -119,6 +172,42 @@ export function logAdminAction(
   opts: { userId: string; tenantId: string; target?: string; detail?: Record<string, unknown> }
 ) {
   logAudit({ ...opts, action, category: ACTION_CATEGORY[action] ?? "ADMIN" });
+}
+
+// ─── Cleanup old DB logs ─────────────────────────────────────────────
+
+export async function cleanupOldAuditLogs(tenantId?: string) {
+  // Get retention days from tenant settings (default 7)
+  let retentionDays = 7;
+
+  if (tenantId) {
+    try {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { settings: true },
+      });
+      const settings = (tenant?.settings ?? {}) as Record<string, unknown>;
+      const configured = settings.auditLogRetentionDays;
+      if (typeof configured === "number" && configured > 0) {
+        retentionDays = configured;
+      }
+    } catch {
+      // Use default
+    }
+  }
+
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+  const where: Record<string, unknown> = {
+    createdAt: { lt: cutoffDate },
+  };
+  if (tenantId) {
+    where.OR = [{ tenantId }, { tenantId: null }];
+  }
+
+  const result = await prisma.auditLog.deleteMany({ where });
+  return { deleted: result.count, retentionDays, cutoffDate };
 }
 
 // ─── Query Audit Logs ───────────────────────────────────────────────

@@ -118,6 +118,7 @@ export function ScheduleFormDialog({
   const [checkin, setCheckin] = useState<CheckinSettings>(DEFAULT_CHECKIN_SETTINGS);
   const [proctoring, setProctoring] = useState<ProctoringSettings>(DEFAULT_PROCTORING_SETTINGS);
   const [certificateTemplateId, setCertificateTemplateId] = useState("");
+  const [enableBadge, setEnableBadge] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
@@ -184,6 +185,7 @@ export function ScheduleFormDialog({
         const existingCheckin = schedSettings?.checkin as Partial<CheckinSettings> | undefined;
         setCheckin({ ...DEFAULT_CHECKIN_SETTINGS, ...existingCheckin });
         setCertificateTemplateId((schedSettings?.certificateTemplateId as string) ?? "");
+        setEnableBadge(!!(schedSettings?.enableBadge));
         // Load proctoring settings
         const existingProctoring = schedSettings?.proctoring as Partial<ProctoringSettings> | undefined;
         setProctoring({ ...DEFAULT_PROCTORING_SETTINGS, ...existingProctoring });
@@ -202,6 +204,7 @@ export function ScheduleFormDialog({
         setCheckin(DEFAULT_CHECKIN_SETTINGS);
         setProctoring(DEFAULT_PROCTORING_SETTINGS);
         setCertificateTemplateId("");
+        setEnableBadge(false);
       }
       setFieldErrors({});
     }
@@ -248,6 +251,7 @@ export function ScheduleFormDialog({
           checkin: isOnline ? { ...DEFAULT_CHECKIN_SETTINGS, enableCheckin: false } : checkin,
           proctoring,
           certificateTemplateId: certificateTemplateId || null,
+          enableBadge,
         },
       };
 
@@ -528,6 +532,20 @@ export function ScheduleFormDialog({
             <p className="text-xs text-muted-foreground">
               กำหนดเทมเพลตสำหรับออกใบประกาศนียบัตรเมื่อผู้สอบผ่านเกณฑ์
             </p>
+          </div>
+
+          {/* ── Badge Settings ── */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm">เปิดใช้ Badge</Label>
+              <p className="text-xs text-muted-foreground">
+                ออก Digital Badge อัตโนมัติตามเกณฑ์คะแนนที่กำหนดใน Badge Template
+              </p>
+            </div>
+            <Switch
+              checked={enableBadge}
+              onCheckedChange={setEnableBadge}
+            />
           </div>
 
           {/* ── Check-in Settings — Onsite only ── */}

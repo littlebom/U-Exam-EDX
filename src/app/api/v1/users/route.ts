@@ -66,6 +66,9 @@ export async function POST(req: NextRequest) {
       ...data,
     });
 
+    const { logAdminAction } = await import("@/services/audit-log.service");
+    logAdminAction("USER_CREATE", { userId: session.userId, tenantId: session.tenantId, target: user.id, detail: { email: data.email, role: data.roleId } });
+
     return NextResponse.json({ success: true, data: { id: user.id } }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

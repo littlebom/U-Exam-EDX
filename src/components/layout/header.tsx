@@ -93,7 +93,17 @@ export function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
           {/* Role badge */}
           {role?.name && (
             <Badge variant="outline" className="hidden text-xs md:inline-flex">
-              {role.name}
+              {({
+                PLATFORM_ADMIN: "ผู้ดูแลระบบ",
+                TENANT_OWNER: "เจ้าของระบบ",
+                ADMIN: "ผู้ดูแล",
+                EXAM_CREATOR: "ผู้สร้างข้อสอบ",
+                GRADER: "ผู้ตรวจข้อสอบ",
+                PROCTOR: "ผู้คุมสอบ",
+                CENTER_MANAGER: "ผู้จัดการศูนย์สอบ",
+                CENTER_STAFF: "เจ้าหน้าที่ศูนย์สอบ",
+                CANDIDATE: "ผู้สอบ",
+              } as Record<string, string>)[role.name] ?? role.name}
             </Badge>
           )}
 
@@ -141,7 +151,7 @@ export function Header({ sidebarOpen, onToggleSidebar }: HeaderProps) {
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="cursor-pointer" asChild>
-                <Link href="/admin/settings">
+                <Link href="/profile">
                   <User className="mr-2 h-4 w-4" />
                   โปรไฟล์
                 </Link>

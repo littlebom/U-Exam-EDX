@@ -3,6 +3,7 @@ import { errors } from "@/lib/errors";
 import { buildPaginationMeta } from "@/types";
 import type { PaginationMeta } from "@/types";
 import type { Prisma } from "@/generated/prisma";
+import { scheduleAutoSubmit, cancelAutoSubmit } from "@/lib/queue/exam-submit.queue";
 import type {
   StartSessionInput,
   SubmitAnswerInput,
@@ -247,6 +248,12 @@ export async function startExam(
     throw err;
   }
 
+  // Schedule auto-submit via BullMQ
+  const durationMs = schedule.exam.duration * 60 * 1000; // minutes → ms
+  scheduleAutoSubmit(sessionId, durationMs).catch(() => {
+    // Non-critical: client-side timer is backup
+  });
+
   return getSessionForCandidate(sessionId, candidateId);
 }
 
@@ -412,6 +419,9 @@ export async function submitExam(sessionId: string, candidateId: string) {
     },
     include: sessionListInclude,
   });
+
+  // Cancel auto-submit job (submitted before timeout)
+  cancelAutoSubmit(sessionId).catch(() => {});
 
   return updated;
 }

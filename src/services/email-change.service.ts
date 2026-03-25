@@ -56,12 +56,10 @@ export async function requestEmailChange(
 
   // 6. Log verification URL (dev mode — replace with email service later)
   const verifyUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/verify-email?token=${token}`;
-  console.log("═══════════════════════════════════════════════════════");
-  console.log("📧 Email Change Verification");
-  console.log(`   User: ${user.email} → ${newEmail}`);
-  console.log(`   URL: ${verifyUrl}`);
-  console.log(`   Expires: ${expiresAt.toISOString()}`);
-  console.log("═══════════════════════════════════════════════════════");
+  // Dev mode: log verification URL (production sends real email)
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[email-change] ${user.email} → ${newEmail} | ${verifyUrl}`);
+  }
 
   return { message: "ส่งลิงก์ยืนยันไปที่อีเมลใหม่แล้ว กรุณาตรวจสอบอีเมล" };
 }

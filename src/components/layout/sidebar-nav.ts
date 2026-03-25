@@ -106,6 +106,7 @@ export const sidebarNav: NavItem[] = [
     children: [
       { title: "ใบรับรองทั้งหมด", href: "/admin/certificates" },
       { title: "เทมเพลต", href: "/admin/certificates/templates" },
+      { title: "Badge", href: "/admin/certificates/badges" },
     ],
   },
   {
@@ -120,11 +121,12 @@ export const sidebarNav: NavItem[] = [
     ],
   },
   {
-    title: "แจ้งเตือน",
+    title: "การสื่อสาร",
     href: "/admin/notifications",
     icon: Bell,
     children: [
       { title: "ทั้งหมด", href: "/admin/notifications" },
+      { title: "ข่าวสาร", href: "/admin/notifications/news" },
       { title: "ส่งอีเมล", href: "/admin/notifications/compose" },
       { title: "ตั้งค่าการแจ้งเตือน", href: "/admin/notifications/preferences" },
     ],

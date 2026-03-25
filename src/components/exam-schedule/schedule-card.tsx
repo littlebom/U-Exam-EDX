@@ -134,9 +134,11 @@ export function ScheduleCard({ schedule, onEdit, onCancel, onSetCertificate }: S
                   </>
                 )}
                 {phaseInfo.phase === "COMPLETED" && (
-                  <DropdownMenuItem className="gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    ดูผลสอบ
+                  <DropdownMenuItem className="gap-2" asChild>
+                    <a href={`/admin/exams/tracking/${schedule.id}`}>
+                      <BarChart3 className="h-4 w-4" />
+                      ดูผลสอบ
+                    </a>
                   </DropdownMenuItem>
                 )}
                 {(phaseInfo.phase === "IN_PROGRESS" || phaseInfo.phase === "COMPLETED") && onSetCertificate && (

@@ -12,6 +12,7 @@ import {
   Clock,
   Loader2,
   CheckCheck,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,16 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -89,6 +100,9 @@ function timeAgo(dateStr: string) {
 
 export default function NotificationsPage() {
   const [tab, setTab] = useState("all");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: result, isLoading } = useQuery<{
@@ -132,6 +146,46 @@ export default function NotificationsPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    setIsDeleting(true);
+    try {
+      const res = await fetch("/api/v1/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      if (!res.ok) throw new Error();
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notification-unread-count"] });
+      toast.success("ลบแจ้งเตือนแล้ว");
+    } catch {
+      toast.error("เกิดข้อผิดพลาดในการลบ");
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    setIsDeleting(true);
+    try {
+      const res = await fetch("/api/v1/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      if (!res.ok) throw new Error();
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["notification-unread-count"] });
+      toast.success("ลบแจ้งเตือนทั้งหมดแล้ว");
+    } catch {
+      toast.error("เกิดข้อผิดพลาดในการลบ");
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteAll(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -149,17 +203,30 @@ export default function NotificationsPage() {
             </p>
           </div>
         </div>
-        {unreadCount > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={handleMarkAllRead}
-          >
-            <CheckCheck className="h-4 w-4" />
-            อ่านทั้งหมด
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleMarkAllRead}
+            >
+              <CheckCheck className="h-4 w-4" />
+              อ่านทั้งหมด
+            </Button>
+          )}
+          {notifications.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:text-destructive"
+              onClick={() => setShowDeleteAll(true)}
+            >
+              <Trash2 className="h-4 w-4" />
+              ลบทั้งหมด
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -238,6 +305,17 @@ export default function NotificationsPage() {
                             {timeAgo(notif.createdAt)}
                           </p>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0 h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(notif.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     );
                   })}
@@ -247,6 +325,52 @@ export default function NotificationsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Delete Single Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ลบแจ้งเตือน</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบแจ้งเตือนนี้หรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTarget && handleDelete(deleteTarget)}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              ลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete All Confirmation */}
+      <AlertDialog open={showDeleteAll} onOpenChange={setShowDeleteAll}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ลบแจ้งเตือนทั้งหมด</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบแจ้งเตือนทั้งหมดหรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAll}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              ลบทั้งหมด
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

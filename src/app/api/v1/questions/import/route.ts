@@ -72,6 +72,21 @@ export async function POST(req: NextRequest) {
     result.errors = [...errors, ...result.errors];
     result.total = rows.length;
 
+    // Fire-and-forget audit log
+    import("@/services/audit-log.service").then(({ logAdminAction }) =>
+      logAdminAction("QUESTION_IMPORT", {
+        userId: session.userId,
+        tenantId: session.tenantId,
+        target: subjectId ?? undefined,
+        detail: {
+          fileName: file.name,
+          totalRows: rows.length,
+          imported: result.imported,
+          errorCount: result.errors.length,
+        },
+      })
+    ).catch(() => {});
+
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     return handleApiError(error);

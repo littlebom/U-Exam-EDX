@@ -55,10 +55,11 @@ export async function middleware(req: NextRequest) {
     const isPublicApi = pathname.startsWith("/api/auth/") ||
       pathname.startsWith("/api/webhooks/") ||
       pathname.startsWith("/api/v1/external/") ||
-      pathname.startsWith("/api/v1/public/");
+      pathname.startsWith("/api/v1/public/") ||
+      pathname.startsWith("/api/v1/badges/");
 
     if (!isPublicApi && pathname.startsWith("/api/v1/")) {
-      const token = await getToken({ req });
+      const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET });
       if (!token) {
         return NextResponse.json(
           { success: false, error: { code: "UNAUTHORIZED", message: "กรุณาเข้าสู่ระบบ" } },

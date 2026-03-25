@@ -19,9 +19,15 @@ import {
   ChevronDown,
   Settings,
   LayoutDashboard,
+  Sun,
+  Moon,
+  Bell,
 } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
 import { useAppSession } from "@/hooks/use-session";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -32,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { Footer } from "@/components/layout/footer";
 
 // Main navbar links
 const navLinks = [
@@ -56,7 +63,21 @@ export default function CandidateLayout({
 }) {
   const pathname = usePathname();
   const { user, role, isAuthenticated, isLoading } = useAppSession();
+  const { theme, setTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Notification count
+  const { data: notifData } = useQuery({
+    queryKey: ["unread-notifications-count"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/notifications?perPage=1&unreadOnly=true");
+      if (!res.ok) return { meta: { total: 0 } };
+      return res.json();
+    },
+    enabled: isAuthenticated,
+    refetchInterval: 60000,
+  });
+  const unreadCount = notifData?.meta?.total ?? 0;
 
   const userInitials = user?.name
     ? user.name.slice(0, 2)
@@ -108,8 +129,31 @@ export default function CandidateLayout({
             })}
           </nav>
 
-          {/* Avatar Dropdown (Desktop) */}
-          <div className="flex items-center gap-3">
+          {/* Theme + Notification + Avatar (Desktop) */}
+          <div className="flex items-center gap-1">
+            {/* Theme toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+
+            {/* Notification bell */}
+            <Button variant="ghost" size="icon" className="relative" asChild>
+              <Link href="/profile/notifications">
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <Badge className="absolute -top-1 -right-1 h-4 min-w-4 p-0 text-[10px] flex items-center justify-center">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Badge>
+                )}
+              </Link>
+            </Button>
+
             {isSessionReady && (
               <div className="hidden sm:block">
                 <DropdownMenu>
@@ -287,21 +331,7 @@ export default function CandidateLayout({
       </main>
 
       {/* Footer */}
-      <footer className="border-t bg-muted/30">
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
-                <GraduationCap className="h-4 w-4 text-primary-foreground" />
-              </div>
-              <span className="text-sm font-semibold">U-Exam</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              &copy; {new Date().getFullYear()} U-Exam. สงวนลิขสิทธิ์ทุกประการ
-            </p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
-import { listNotifications, markAllAsRead } from "@/services/notification.service";
+import {
+  listNotifications,
+  markAllAsRead,
+  deleteNotifications,
+  deleteAllNotifications,
+} from "@/services/notification.service";
 
 export async function GET(req: NextRequest) {
   try {
@@ -40,6 +45,36 @@ export async function PUT() {
 
     await markAllAsRead(session.user.id);
     return NextResponse.json({ success: true, data: { marked: true } });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: { message: "กรุณาเข้าสู่ระบบ" } },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+
+    let deleted: number;
+    if (body.all === true) {
+      deleted = await deleteAllNotifications(session.user.id);
+    } else if (Array.isArray(body.ids) && body.ids.length > 0) {
+      deleted = await deleteNotifications(session.user.id, body.ids);
+    } else {
+      return NextResponse.json(
+        { success: false, error: { message: "กรุณาระบุ ids หรือ all: true" } },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({ success: true, data: { deleted } });
   } catch (error) {
     return handleApiError(error);
   }

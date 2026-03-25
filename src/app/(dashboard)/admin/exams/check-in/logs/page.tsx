@@ -284,7 +284,7 @@ export default function CheckinLogsPage() {
                 <TableBody>
                   {(logs ?? []).map((log) => {
                     const Icon = LOG_TYPE_ICONS[log.type] ?? FileText;
-                    const meta = log.metadata;
+                    const meta = log.metadata as Record<string, unknown> | null;
                     const method = meta?.method as string | undefined;
 
                     return (
@@ -323,11 +323,11 @@ export default function CheckinLogsPage() {
                         </TableCell>
                         <TableCell>
                           <p className="text-sm">{log.description ?? "—"}</p>
-                          {meta?.seatNumber && (
+                          {meta?.seatNumber ? (
                             <span className="text-xs text-muted-foreground">
-                              ที่นั่ง: {meta.seatNumber as string}
+                              ที่นั่ง: {String(meta.seatNumber)}
                             </span>
-                          )}
+                          ) : null}
                         </TableCell>
                         <TableCell>
                           {method ? (

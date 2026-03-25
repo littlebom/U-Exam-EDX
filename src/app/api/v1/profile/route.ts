@@ -39,6 +39,7 @@ export async function GET() {
               },
             },
           },
+          digitalBadge: { select: { id: true, badgeUrl: true } },
         },
       }),
     ]);
@@ -112,6 +113,17 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
     const data = updateProfileSchema.parse(body);
     const result = await updateCandidateProfile(session.user.id, data);
+
+    // Fire-and-forget audit log
+    import("@/services/audit-log.service").then(({ logAudit }) =>
+      logAudit({
+        action: "PROFILE_UPDATE",
+        category: "USER",
+        userId: session.user!.id,
+        target: session.user!.id,
+        detail: { fields: Object.keys(data) },
+      })
+    ).catch(() => {});
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {

@@ -448,9 +448,18 @@ export default function ProfileDashboardPage() {
                       key={cert.id}
                       className="flex items-center gap-3 rounded-lg border p-2.5"
                     >
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-                        <Award className="h-4 w-4 text-amber-600" />
-                      </div>
+                      {/* Badge SVG thumbnail */}
+                      {cert.digitalBadge ? (
+                        <img
+                          src={`/api/v1/badges/${cert.id}/svg`}
+                          alt="Badge"
+                          className="h-10 w-10 rounded-full shrink-0"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30 shrink-0">
+                          <Award className="h-4 w-4 text-amber-600" />
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">
                           {cert.grade?.session?.examSchedule?.exam?.title ?? cert.certificateNumber}
@@ -463,6 +472,17 @@ export default function ProfileDashboardPage() {
                           })}
                         </p>
                       </div>
+                      {cert.digitalBadge && (
+                        <a
+                          href={`/api/v1/badges/${cert.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline shrink-0"
+                          title="Open Badge 3.0 JSON-LD"
+                        >
+                          OB 3.0
+                        </a>
+                      )}
                       <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                     </div>
                   ))}

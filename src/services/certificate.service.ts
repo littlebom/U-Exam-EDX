@@ -158,7 +158,7 @@ export async function issueCertificate(
   for (let attempt = 0; attempt < 3; attempt++) {
     const certNumber = generateCertificateNumber(tenantId);
     try {
-      return await prisma.certificate.create({
+      const cert = await prisma.certificate.create({
         data: {
           tenantId,
           templateId: data.templateId,
@@ -176,6 +176,32 @@ export async function issueCertificate(
           candidate: { select: { id: true, name: true } },
         },
       });
+
+      // Auto-issue Open Badge 3.0
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://u-exam.com";
+      await prisma.digitalBadge.create({
+        data: {
+          certificateId: cert.id,
+          badgeUrl: `${baseUrl}/api/v1/badges/${cert.id}`,
+          metadata: {
+            version: "3.0",
+            svgUrl: `${baseUrl}/api/v1/badges/${cert.id}/svg`,
+            statusUrl: `${baseUrl}/api/v1/badges/${cert.id}/status`,
+            issuedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      // Log certificate issue
+      const { logAdminAction } = await import("@/services/audit-log.service");
+      logAdminAction("CERTIFICATE_ISSUE", {
+        userId: "system",
+        tenantId,
+        target: cert.id,
+        detail: { candidateId: data.candidateId, certificateNumber: certNumber },
+      });
+
+      return cert;
     } catch (err) {
       // Retry on unique constraint violation (certificate number collision)
       if (err && typeof err === "object" && "code" in err && err.code === "P2002" && attempt < 2) {
@@ -201,6 +227,14 @@ export async function revokeCertificate(
   if (cert.status !== "ACTIVE") {
     throw errors.validation("สามารถเพิกถอนได้เฉพาะใบรับรองที่ Active");
   }
+
+  const { logAdminAction } = await import("@/services/audit-log.service");
+  logAdminAction("CERTIFICATE_REVOKE", {
+    userId: "system",
+    tenantId,
+    target: id,
+    detail: { reason, certificateNumber: cert.certificateNumber },
+  });
 
   return prisma.certificate.update({
     where: { id },

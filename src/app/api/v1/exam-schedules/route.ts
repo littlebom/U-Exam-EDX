@@ -25,6 +25,9 @@ export async function POST(request: NextRequest) {
 
     const schedule = await createSchedule(session.tenantId, parsed);
 
+    const { logAdminAction } = await import("@/services/audit-log.service");
+    logAdminAction("SCHEDULE_CREATE", { userId: session.userId, tenantId: session.tenantId, target: schedule.id, detail: { examId: parsed.examId } });
+
     return NextResponse.json({ success: true, data: schedule }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

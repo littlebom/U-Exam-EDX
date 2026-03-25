@@ -140,6 +140,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Fire-and-forget audit log
+    import("@/services/audit-log.service").then(({ logAdminAction }) =>
+      logAdminAction("EMAIL_SENT", {
+        userId: session.userId,
+        tenantId: session.tenantId,
+        detail: { to, subject, sentCount, failCount, totalEmails: emails.length },
+      })
+    ).catch(() => {});
+
     return NextResponse.json({
       success: true,
       data: {

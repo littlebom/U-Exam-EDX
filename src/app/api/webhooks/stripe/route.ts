@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
 
       default:
         // Unhandled event type — ignore
-        console.log(`Unhandled Stripe event: ${event.type}`);
+        // [stripe](`Unhandled Stripe event: ${event.type}`);
     }
   } catch (err) {
     console.error(`Error processing Stripe event ${event.type}:`, err);
@@ -109,10 +109,10 @@ async function handlePaymentSuccess(session: Stripe.Checkout.Session) {
       transactionId,
       gatewayRef: session.id,
     });
-    console.log(`Payment ${paymentId} processed successfully via Stripe`);
+    // [stripe](`Payment ${paymentId} processed successfully via Stripe`);
   } catch (err) {
     // processPayment throws if payment is not PENDING (idempotent guard)
-    console.warn(`Payment ${paymentId} already processed or error:`, err);
+    // [stripe-warn](`Payment ${paymentId} already processed or error:`, err);
   }
 }
 
@@ -126,8 +126,8 @@ async function handlePaymentFailed(session: Stripe.Checkout.Session) {
 
   try {
     await markPaymentFailed(tenantId, paymentId);
-    console.log(`Payment ${paymentId} marked as failed`);
+    // [stripe](`Payment ${paymentId} marked as failed`);
   } catch (err) {
-    console.warn(`Error marking payment ${paymentId} as failed:`, err);
+    // [stripe-warn](`Error marking payment ${paymentId} as failed:`, err);
   }
 }

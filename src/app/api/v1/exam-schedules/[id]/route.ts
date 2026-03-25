@@ -36,6 +36,9 @@ export async function PUT(
     const parsed = updateScheduleSchema.parse(body);
     const schedule = await updateSchedule(session.tenantId, id, parsed);
 
+    const { logAdminAction } = await import("@/services/audit-log.service");
+    logAdminAction("SCHEDULE_UPDATE", { userId: session.userId, tenantId: session.tenantId, target: id });
+
     return NextResponse.json({ success: true, data: schedule });
   } catch (error) {
     return handleApiError(error);
@@ -50,6 +53,9 @@ export async function DELETE(
     const session = await requirePermission("exam:schedule");
     const { id } = await context.params;
     await deleteSchedule(session.tenantId, id);
+
+    const { logAdminAction } = await import("@/services/audit-log.service");
+    logAdminAction("SCHEDULE_UPDATE", { userId: session.userId, tenantId: session.tenantId, target: id, detail: { action: "delete" } });
 
     return NextResponse.json({ success: true });
   } catch (error) {

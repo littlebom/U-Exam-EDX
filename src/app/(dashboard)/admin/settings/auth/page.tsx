@@ -320,18 +320,18 @@ export default function AuthSettingsPage() {
                         <div className="relative">
                           <Input
                             type={
-                              field.secret && !showSecrets[`${provider.key}-${field.key}`]
+                              ("secret" in field && field.secret) && !showSecrets[`${provider.key}-${field.key}`]
                                 ? "password"
                                 : "text"
                             }
-                            value={(config as Record<string, string>)[field.key] ?? ""}
+                            value={(config as unknown as Record<string, string>)[field.key] ?? ""}
                             onChange={(e) =>
                               updateProvider(provider.key, field.key, e.target.value)
                             }
                             placeholder={field.placeholder}
                             className="text-sm pr-10"
                           />
-                          {field.secret && (
+                          {("secret" in field && field.secret) && (
                             <button
                               type="button"
                               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"

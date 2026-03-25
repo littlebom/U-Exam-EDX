@@ -134,6 +134,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           }
           // Use the existing user ID for JWT
           user.id = existingUser.id;
+          // Log OAuth login
+          const { logAuthEvent } = await import("@/services/audit-log.service");
+          logAuthEvent("AUTH_LOGIN", { userId: existingUser.id, detail: { email: user.email, provider: providerKey } });
           return true;
         }
 
@@ -169,6 +172,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         });
 
         user.id = newUser.id;
+        // Log auto-register + login
+        const { logAuthEvent } = await import("@/services/audit-log.service");
+        logAuthEvent("AUTH_LOGIN", { userId: newUser.id, detail: { email: user.email, provider: providerKey, autoRegistered: true } });
         return true;
       }
 
@@ -275,6 +281,16 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       };
 
       return session;
+    },
+  },
+  events: {
+    async signOut(message) {
+      const { logAuthEvent } = await import("@/services/audit-log.service");
+      const token = "token" in message ? message.token : null;
+      logAuthEvent("AUTH_LOGOUT", {
+        userId: (token?.userId as string) ?? null,
+        detail: { method: "signOut" },
+      });
     },
   },
 });

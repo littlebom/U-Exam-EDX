@@ -75,6 +75,8 @@ model Tenant {
   mediaFiles              MediaFile[]
   auditLogs               AuditLog[]
   competencyFrameworks     CompetencyFramework[]
+  badgeTemplates           BadgeTemplate[]
+  news                     News[]
 
   @@map("tenants")
 }
@@ -127,6 +129,8 @@ model User {
   incidentsCreated        Incident[]  @relation("IncidentCreatedBy")
   uploadedMedia           MediaFile[] @relation("MediaUploadedBy")
   auditLogs               AuditLog[]  @relation("AuditLogs")
+  digitalBadges           DigitalBadge[]
+  newsCreated             News[] @relation("NewsCreatedBy")
 
   @@map("users")
 }
@@ -554,6 +558,7 @@ model Exam {
   rubrics    Rubric[]
   graderAssignments GraderAssignment[]
   examOnlyQuestions Question[] @relation("ExamOnlyQuestions")
+  badgeTemplates    BadgeTemplate[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -802,6 +807,7 @@ model Grade {
   session      ExamSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   gradeAnswers GradeAnswer[]
   certificates Certificate[]
+  digitalBadges DigitalBadge[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -1657,25 +1663,59 @@ model Certificate {
 }
 
 // ============================================================
-// 32. DigitalBadge
+// 32. BadgeTemplate
 // ============================================================
-model DigitalBadge {
-  id            String @id @default(uuid()) @db.Uuid
-  certificateId String @unique @map("certificate_id") @db.Uuid
-  badgeUrl      String @map("badge_url") @db.VarChar(500)
-  metadata      Json?  @db.JsonB  // Badge metadata (issuer, criteria, evidence)
+model BadgeTemplate {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  name        String  @db.VarChar(200) // "ดีเยี่ยม", "ดี", "ผ่าน"
+  description String? @db.Text
+  minScore    Float   @map("min_score") // 95, 80, 60
+  maxScore    Float   @default(100) @map("max_score")
+  badgeColor  String  @default("#FFD700") @map("badge_color") @db.VarChar(20) // gold, silver, bronze
+  badgeIcon   String  @default("trophy") @map("badge_icon") @db.VarChar(50) // trophy, star, medal, award
+  badgeLabel  String  @default("CERTIFIED") @map("badge_label") @db.VarChar(50) // text on badge
+  examId      String? @map("exam_id") @db.Uuid // null = ใช้กับทุกวิชา
+  priority    Int     @default(0) // สูง = ได้ก่อน
+  isActive    Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   // Relations
-  certificate Certificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  exam    Exam?   @relation(fields: [examId], references: [id], onDelete: SetNull)
+  badges  DigitalBadge[]
+
+  @@map("badge_templates")
+}
+
+// ============================================================
+// 33. DigitalBadge
+// ============================================================
+model DigitalBadge {
+  id              String  @id @default(uuid()) @db.Uuid
+  certificateId   String? @unique @map("certificate_id") @db.Uuid
+  badgeTemplateId String? @map("badge_template_id") @db.Uuid
+  gradeId         String? @map("grade_id") @db.Uuid
+  userId          String? @map("user_id") @db.Uuid
+  badgeUrl        String  @map("badge_url") @db.VarChar(500)
+  metadata        Json?   @db.JsonB
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  certificate   Certificate?   @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  badgeTemplate BadgeTemplate? @relation(fields: [badgeTemplateId], references: [id], onDelete: SetNull)
+  grade         Grade?         @relation(fields: [gradeId], references: [id], onDelete: SetNull)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@map("digital_badges")
 }
 
 // ============================================================
-// 33. ProctoringSession
+// 34. ProctoringSession
 // ============================================================
 model ProctoringSession {
   id                 String  @id @default(uuid()) @db.Uuid
@@ -1906,5 +1946,28 @@ model SubjectCompetencyMap {
   @@index([subjectId])
   @@index([competencyAreaId])
   @@map("subject_competency_maps")
+}
+
+// ============================================================
+// News (Tenant-scoped news/announcements)
+// ============================================================
+model News {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  title       String   @db.VarChar(500)
+  content     String   @db.Text
+  coverImage  String?  @map("cover_image") @db.VarChar(500)
+  status      String   @default("DRAFT") @db.VarChar(20) // DRAFT, PUBLISHED
+  publishedAt DateTime? @map("published_at") @db.Timestamptz()
+  createdById String   @map("created_by_id") @db.Uuid
+
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("NewsCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId, status])
+  @@map("news")
 }
 

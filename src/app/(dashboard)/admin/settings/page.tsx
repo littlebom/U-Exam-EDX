@@ -8,6 +8,14 @@ import {
   Upload,
   Save,
   Loader2,
+  Globe,
+  Facebook,
+  MessageCircle,
+  Clock,
+  Map,
+  Instagram,
+  Youtube,
+  Music2,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -29,11 +37,36 @@ import { useDetail } from "@/hooks/use-api";
 import { useAppSession } from "@/hooks/use-session";
 import { toast } from "sonner";
 
+interface BusinessHourEntry {
+  day: string;
+  open: string;
+  close: string;
+  closed: boolean;
+}
+
+const DAYS = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"];
+
+const DEFAULT_BUSINESS_HOURS: BusinessHourEntry[] = DAYS.map((day, i) => ({
+  day,
+  open: "08:30",
+  close: "16:30",
+  closed: i >= 5, // เสาร์-อาทิตย์ ปิด
+}));
+
 interface TenantSettings {
   email?: string;
   phone?: string;
   address?: string;
+  facebook?: string;
+  line?: string;
+  instagram?: string;
+  twitter?: string;
+  youtube?: string;
+  tiktok?: string;
+  businessHours?: BusinessHourEntry[];
+  googleMapUrl?: string;
   primaryColor?: string;
+  auditLogRetentionDays?: number;
 }
 
 interface TenantData {
@@ -69,7 +102,17 @@ export default function SettingsPage() {
   const [orgEmail, setOrgEmail] = useState("");
   const [orgPhone, setOrgPhone] = useState("");
   const [orgAddress, setOrgAddress] = useState("");
+  // orgWebsite removed — ใช้ข้อมูลจาก tenant name/domain แทน
+  const [orgFacebook, setOrgFacebook] = useState("");
+  const [orgLine, setOrgLine] = useState("");
+  const [orgInstagram, setOrgInstagram] = useState("");
+  const [orgTwitter, setOrgTwitter] = useState("");
+  const [orgYoutube, setOrgYoutube] = useState("");
+  const [orgTiktok, setOrgTiktok] = useState("");
+  const [businessHours, setBusinessHours] = useState<BusinessHourEntry[]>(DEFAULT_BUSINESS_HOURS);
+  const [googleMapUrl, setGoogleMapUrl] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#741717");
+  const [auditLogRetentionDays, setAuditLogRetentionDays] = useState(7);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,7 +124,20 @@ export default function SettingsPage() {
       setOrgEmail(tenantData.settings?.email ?? "");
       setOrgPhone(tenantData.settings?.phone ?? "");
       setOrgAddress(tenantData.settings?.address ?? "");
+      setOrgFacebook(tenantData.settings?.facebook ?? "");
+      setOrgLine(tenantData.settings?.line ?? "");
+      setOrgInstagram(tenantData.settings?.instagram ?? "");
+      setOrgTwitter(tenantData.settings?.twitter ?? "");
+      setOrgYoutube(tenantData.settings?.youtube ?? "");
+      setOrgTiktok(tenantData.settings?.tiktok ?? "");
+      setBusinessHours(
+        Array.isArray(tenantData.settings?.businessHours)
+          ? tenantData.settings.businessHours
+          : DEFAULT_BUSINESS_HOURS
+      );
+      setGoogleMapUrl(tenantData.settings?.googleMapUrl ?? "");
       setPrimaryColor(tenantData.settings?.primaryColor ?? "#741717");
+      setAuditLogRetentionDays(tenantData.settings?.auditLogRetentionDays ?? 7);
     }
   }, [tenantData]);
 
@@ -99,7 +155,17 @@ export default function SettingsPage() {
             email: orgEmail || undefined,
             phone: orgPhone || undefined,
             address: orgAddress || undefined,
+            // website removed
+            facebook: orgFacebook || undefined,
+            line: orgLine || undefined,
+            instagram: orgInstagram || undefined,
+            twitter: orgTwitter || undefined,
+            youtube: orgYoutube || undefined,
+            tiktok: orgTiktok || undefined,
+            businessHours: businessHours || undefined,
+            googleMapUrl: googleMapUrl || undefined,
             primaryColor: primaryColor || undefined,
+            auditLogRetentionDays,
           },
         }),
       });
@@ -274,6 +340,200 @@ export default function SettingsPage() {
               placeholder="ที่อยู่องค์กร"
             />
           </div>
+
+          <Separator />
+
+          {/* Business Hours & Map */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-medium">เวลาทำการและแผนที่</p>
+            </div>
+
+            {/* Business Hours — day/time picker */}
+            <div className="space-y-2 mb-4">
+              <Label>
+                <span className="flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5" />
+                  เวลาทำการ
+                </span>
+              </Label>
+              <div className="space-y-2 rounded-lg border p-3">
+                {businessHours.map((entry, idx) => (
+                  <div key={entry.day} className="flex items-center gap-2 text-sm">
+                    <span className="w-20 shrink-0 font-medium">{entry.day}</span>
+                    <label className="flex items-center gap-1.5 shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={!entry.closed}
+                        onChange={(e) => {
+                          const updated = [...businessHours];
+                          updated[idx] = { ...entry, closed: !e.target.checked };
+                          setBusinessHours(updated);
+                        }}
+                        className="rounded border-gray-300"
+                      />
+                      <span className={entry.closed ? "text-muted-foreground" : ""}>
+                        {entry.closed ? "ปิด" : "เปิด"}
+                      </span>
+                    </label>
+                    {!entry.closed && (
+                      <>
+                        <input
+                          type="time"
+                          value={entry.open}
+                          onChange={(e) => {
+                            const updated = [...businessHours];
+                            updated[idx] = { ...entry, open: e.target.value };
+                            setBusinessHours(updated);
+                          }}
+                          className="rounded border border-input bg-background px-2 py-1 text-sm"
+                        />
+                        <span className="text-muted-foreground">—</span>
+                        <input
+                          type="time"
+                          value={entry.close}
+                          onChange={(e) => {
+                            const updated = [...businessHours];
+                            updated[idx] = { ...entry, close: e.target.value };
+                            setBusinessHours(updated);
+                          }}
+                          className="rounded border border-input bg-background px-2 py-1 text-sm"
+                        />
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="google-map-url">
+                  <span className="flex items-center gap-1.5">
+                    <Map className="h-3.5 w-3.5" />
+                    Google Map URL
+                  </span>
+                </Label>
+                <Input
+                  id="google-map-url"
+                  type="url"
+                  value={googleMapUrl}
+                  onChange={(e) => setGoogleMapUrl(e.target.value)}
+                  placeholder="https://www.google.com/maps/embed?pb=..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  ใส่ URL จาก Google Maps &gt; แชร์ &gt; ฝังแผนที่ (Embed)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Social Media / Additional Contact */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <Globe className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-medium">ช่องทางติดต่อเพิ่มเติม</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="org-facebook">
+                  <span className="flex items-center gap-1.5">
+                    <Facebook className="h-3.5 w-3.5" />
+                    Facebook
+                  </span>
+                </Label>
+                <Input
+                  id="org-facebook"
+                  type="url"
+                  value={orgFacebook}
+                  onChange={(e) => setOrgFacebook(e.target.value)}
+                  placeholder="https://facebook.com/yourpage"
+                />
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="org-line">
+                  <span className="flex items-center gap-1.5">
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    LINE
+                  </span>
+                </Label>
+                <Input
+                  id="org-line"
+                  value={orgLine}
+                  onChange={(e) => setOrgLine(e.target.value)}
+                  placeholder="@line-id หรือ https://line.me/..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="org-instagram">
+                  <span className="flex items-center gap-1.5">
+                    <Instagram className="h-3.5 w-3.5" />
+                    Instagram
+                  </span>
+                </Label>
+                <Input
+                  id="org-instagram"
+                  type="url"
+                  value={orgInstagram}
+                  onChange={(e) => setOrgInstagram(e.target.value)}
+                  placeholder="https://instagram.com/yourpage"
+                />
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="org-twitter">
+                  <span className="flex items-center gap-1.5">
+                    X (Twitter)
+                  </span>
+                </Label>
+                <Input
+                  id="org-twitter"
+                  type="url"
+                  value={orgTwitter}
+                  onChange={(e) => setOrgTwitter(e.target.value)}
+                  placeholder="https://x.com/yourpage"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="org-youtube">
+                  <span className="flex items-center gap-1.5">
+                    <Youtube className="h-3.5 w-3.5" />
+                    YouTube
+                  </span>
+                </Label>
+                <Input
+                  id="org-youtube"
+                  type="url"
+                  value={orgYoutube}
+                  onChange={(e) => setOrgYoutube(e.target.value)}
+                  placeholder="https://youtube.com/@yourchannel"
+                />
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="org-tiktok">
+                  <span className="flex items-center gap-1.5">
+                    <Music2 className="h-3.5 w-3.5" />
+                    TikTok
+                  </span>
+                </Label>
+                <Input
+                  id="org-tiktok"
+                  type="url"
+                  value={orgTiktok}
+                  onChange={(e) => setOrgTiktok(e.target.value)}
+                  placeholder="https://tiktok.com/@yourpage"
+                />
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -370,6 +630,40 @@ export default function SettingsPage() {
                 </Button>
               )}
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Audit Log Retention */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base">Audit Logs</CardTitle>
+          </div>
+          <CardDescription>
+            กำหนดระยะเวลาเก็บ Audit Logs ในฐานข้อมูล (ไฟล์ JSONL เก็บถาวร)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>เก็บ Audit Logs ใน DB</Label>
+            <select
+              value={auditLogRetentionDays}
+              onChange={(e) => setAuditLogRetentionDays(Number(e.target.value))}
+              className="flex h-9 w-full max-w-[250px] rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value={7}>7 วัน</option>
+              <option value={14}>14 วัน</option>
+              <option value={30}>30 วัน</option>
+              <option value={60}>60 วัน</option>
+              <option value={90}>90 วัน</option>
+              <option value={180}>180 วัน</option>
+              <option value={365}>365 วัน</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Logs เก่ากว่าที่กำหนดจะถูกลบจากฐานข้อมูลอัตโนมัติ — ไฟล์ JSONL (logs/audit/) เก็บถาวรไม่ถูกลบ
+            </p>
           </div>
         </CardContent>
       </Card>

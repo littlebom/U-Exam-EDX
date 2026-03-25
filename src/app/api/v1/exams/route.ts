@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
       parsed
     );
 
+    const { logAdminAction } = await import("@/services/audit-log.service");
+    logAdminAction("EXAM_CREATE", { userId: session.userId, tenantId: session.tenantId, target: exam.id, detail: { title: parsed.title } });
+
     return NextResponse.json({ success: true, data: exam }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

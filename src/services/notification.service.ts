@@ -56,6 +56,25 @@ export async function markAllAsRead(userId: string) {
   });
 }
 
+export async function deleteNotifications(
+  userId: string,
+  ids: string[]
+): Promise<number> {
+  const result = await prisma.notification.deleteMany({
+    where: { id: { in: ids }, userId },
+  });
+  return result.count;
+}
+
+export async function deleteAllNotifications(
+  userId: string
+): Promise<number> {
+  const result = await prisma.notification.deleteMany({
+    where: { userId },
+  });
+  return result.count;
+}
+
 export async function sendNotification(params: {
   tenantId: string;
   userId: string;

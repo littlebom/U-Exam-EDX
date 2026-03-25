@@ -110,6 +110,10 @@ export async function checkInByVoucher(
     },
   });
 
+  // Audit log — checkin success
+  const { logAudit } = await import("@/services/audit-log.service");
+  logAudit({ action: "AUTH_LOGIN", category: "EXAM", tenantId, userId: voucher.candidate.id, target: examScheduleId, detail: { type: isLate ? "LATE_CHECKIN" : "CHECKIN", voucherCode: voucher.code } });
+
   return {
     status: isLate ? "LATE" : "SUCCESS",
     message: isLate ? "เช็คอินสำเร็จ (มาสาย)" : "เช็คอินสำเร็จ",
